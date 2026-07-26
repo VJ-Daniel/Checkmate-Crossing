@@ -1,0 +1,20 @@
+# Visual Studio
+.vs/
+*.VC.db
+*.VC.opendb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# IntelliSense
+ipch/
+
+# Build output
+Debug/
+Release/
+x64/
+x86/
+
+# Logs
+*.log
