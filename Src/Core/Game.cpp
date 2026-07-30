@@ -1,39 +1,58 @@
 /*
     ============================================================
-    Gangster Survival - Game Orchestration Module
+    Checkmate Crossing - Game Orchestration Module
 
-    Author: Leonardo Moura
-    Date: 2026
+    Coordinates the camera, world renderer, battlefield and pawn, and
+    owns the order in which they are created, updated and drawn.
 
-    Description:
-    Coordinates the scene, player, enemies, UI, audio, spawning,
-    Game Over sequence, rendering order and match restart flow.
+    Based on the Gangster Survival OpenGL framework by Leonardo Moura.
     ============================================================
 */
 
 #include "Game.h"
 
-#include <memory>
-#include <algorithm>
-#include <chrono>
-
-#include "Shader.h"
+#include "GameConfig.h"
 #include "ResourceManager.h"
-#include "AudioPlayer.h"
+#include "Shader.h"
 
 namespace
 {
-    constexpr float EnemySpawnInterval = 2.0f;
-    constexpr std::size_t MaxEnemies = 5;
-    constexpr float GameOverDelay = 1.5f;
+    // TEMPORARY showcase settings. See Game::BuildShowcase.
+    //
+    // Three rows, two lanes apart, ordered by height: the tall rows have to
+    // sit nearer the camera because the far end of the view runs out of
+    // vertical room, and a tall row would be cut off at the top.
+    //
+    // That ordering also decides the occlusion. A prop of height h hides the
+    // ground for about h / tan(pitch) behind it, which at 35 degrees is
+    // roughly 1.4 h - so a 1.55 tall tree blots out the next two lanes. The
+    // stationary row survives this only because its two tall entries, the
+    // tree and the palisade, sit at the far ends of the row where no hazard
+    // is placed behind them.
+
+    constexpr int PieceRowLanesAhead = 2;
+    constexpr int ObstacleRowLanesAhead = 4;
+    constexpr int HazardRowLanesAhead = 6;
+
+    /// Seven pieces now that the mounted pawn joined them, two of which are
+    /// horses reaching about 0.58 forward from their slot.
+    ///
+    /// 1.2 puts the outer slots at 3.6, so the mounted pawn's nose stops
+    /// around 4.18. At 1.35 it reached 4.63 and buried itself in the nearest
+    /// border decoration, whose inner edge can fall as low as 4.33.
+    constexpr float PieceSpacing = 1.2f;
+
+    /// Eight props is the widest row. A spacing of 1.0 keeps the tree and
+    /// palisade at about +/-3.5, with their outer edges near +/-4.0 and clear
+    /// of the border-decoration band that begins at x = 4.8.
+    constexpr float ObstacleSpacing = 1.0f;
+
+    constexpr float HazardSpacing = 1.6f;
 }
 
 Game::Game()
-    : randomEngine(static_cast<unsigned int>(
-        std::chrono::steady_clock::now().time_since_epoch().count()))
 {
     ResourceManager::Initialize();
-
 }
 
 Game::~Game()
@@ -45,228 +64,366 @@ bool Game::Initialize(
     float screenWidth,
     float screenHeight)
 {
-    camera = std::make_shared<Camera2D>(
+    camera = std::make_shared<Camera3D>(
         screenWidth,
         screenHeight);
+
+    ConfigureCamera();
 
     auto shader = std::make_shared<Shader>();
 
     if (!shader->Load(
-        "Src/Shaders/vertex.glsl",
-        "Src/Shaders/fragment.glsl"))
+        "Src/Shaders/world_vertex.glsl",
+        "Src/Shaders/world_fragment.glsl"))
     {
         return false;
     }
 
-    shader->Use();
-    shader->SetInt("image", 0);
-
-    renderer = std::make_shared<SpriteRenderer>(
+    renderer = std::make_shared<MeshRenderer>(
         shader,
         camera);
 
     renderer->Initialize();
 
-    scene = std::make_shared<Scene>();
+    // The sprite pass shares the camera but has its own quad and shader. It is
+    // initialized here so a broken sprite shader is caught at start-up rather
+    // than the first time something tries to draw a sprite.
+    spriteRenderer = std::make_shared<SpriteRenderer>(camera);
 
-    auto backgroundTexture = ResourceManager::LoadTexture(
-        "ForestBackground",
-        "Src/Resources/Background/2304x1296.png");
-
-    if (!backgroundTexture)
+    if (!spriteRenderer->Initialize())
         return false;
 
-    auto backgroundSheet = ResourceManager::CreateSpriteSheet(
-        "ForestBackgroundSheet", "ForestBackground", 1, 1);
+    spriteRenderer->SetScreenSize(screenWidth, screenHeight);
 
-    background = std::make_shared<GameObject>();
-    background->GetSprite().SetSpriteSheet(backgroundSheet);
-    background->GetTransform().SetPosition(
-        -screenWidth * 0.5f,
-        -screenHeight * 0.5f);
-    background->GetTransform().SetScale(screenWidth, screenHeight);
-    scene->Add(background);
+    level = std::make_shared<Level>();
+    level->Build();
 
-    player = std::make_shared<Player>();
-    scene->Add(player);
+    pawn = std::make_shared<Pawn>();
+    pawn->SetSpawnPosition(level->GetPlayerSpawnPosition());
+    pawn->Initialize();
 
-    scene->Initialize();
+    pieceMeshes = std::make_shared<PieceMeshLibrary>();
+    obstacleMeshes = std::make_shared<ObstacleMeshLibrary>();
 
-    ui = std::make_shared<GameUI>();
-    if (!ui->Initialize(screenWidth, screenHeight))
-        return false;
+    BuildShowcase();
 
-    SpawnEnemy();
-    AudioPlayer::PlayMusicLoop();
+    // Frame the pawn before the first frame is drawn, so it is already in
+    // view the moment the window opens.
+    UpdateCamera();
 
     return true;
 }
 
-void Game::Update(float deltaTime)
+void Game::ConfigureCamera()
 {
-    if (scene)
+    if (!camera)
+        return;
+
+    // The reference game's viewing angle: an orthographic camera tilted
+    // down over the lanes, never rotated by the player. Every value comes
+    // from GameConfig, where the reasoning behind it is documented.
+    camera->SetProjectionMode(ProjectionMode::Orthographic);
+
+    camera->SetPitch(GameConfig::CameraPitchDegrees);
+    camera->SetYaw(GameConfig::CameraYawDegrees);
+    camera->SetDistance(GameConfig::CameraDistance);
+
+    camera->SetOrthographicHeight(GameConfig::CameraOrthographicHeight);
+    camera->SetFieldOfView(GameConfig::CameraFieldOfView);
+
+    camera->SetClipPlanes(
+        GameConfig::CameraNearPlane,
+        GameConfig::CameraFarPlane);
+}
+
+glm::vec3 Game::GetShowcaseSlot(
+    int lanesAhead,
+    int slot,
+    int slotCount,
+    float spacing) const
+{
+    const int row = level->GetSpawnRow() + lanesAhead;
+
+    // Stand the row on a real lane, so it sits on that lane's surface rather
+    // than assuming the board is flat.
+    const Lane* lane = level->GetLane(row);
+
+    const float surface = lane
+        ? lane->GetSurfaceHeight()
+        : GameConfig::RaisedLaneSurface;
+
+    const float firstX =
+        -spacing * static_cast<float>(slotCount - 1) * 0.5f;
+
+    return glm::vec3(
+        firstX + spacing * static_cast<float>(slot),
+        surface,
+        Level::RowToWorldZ(row));
+}
+
+void Game::BuildShowcase()
+{
+    if (!level || !pieceMeshes || !obstacleMeshes)
+        return;
+
+    showcasePieces.clear();
+    showcaseObstacles.clear();
+
+    for (int index = 0; index < PieceTypeCount; ++index)
     {
-        AudioPlayer::UpdateMusic();
+        auto piece = pieceMeshes->CreatePiece(
+            PieceTypeFromIndex(index),
+            PieceTeam::White);
 
-        if (gameOverActive)
-        {
-            ui->Update(deltaTime);
-            return;
-        }
+        piece->SetGroundPosition(
+            GetShowcaseSlot(
+                PieceRowLanesAhead,
+                index,
+                PieceTypeCount,
+                PieceSpacing));
 
-        scene->Update(deltaTime);
+        showcasePieces.push_back(piece);
+    }
 
-        if (player->IsDead())
-        {
-            ui->SetHealth(player->GetHealth());
+    // Stationary props, in the order the enum lists them. That order puts
+    // the tree and the palisade - the only two tall enough to hide the row
+    // behind them - at the far ends, clear of the hazards.
+    for (int index = 0; index < ObstacleTypeCount; ++index)
+    {
+        auto obstacle = obstacleMeshes->CreateObstacle(
+            ObstacleTypeFromIndex(index));
 
-            if (!deathSequenceStarted)
-            {
-                deathSequenceStarted = true;
-                AudioPlayer::StopMusic();
-            }
+        glm::vec3 position = GetShowcaseSlot(
+            ObstacleRowLanesAhead,
+            index,
+            ObstacleTypeCount,
+            ObstacleSpacing);
 
-            if (player->GetAnimator().IsFinished())
-                deathDelayTimer += deltaTime;
+        // The cow faces the palisade and its head projects beyond its body's
+        // logical origin. Give that pair an intentional gap while keeping
+        // both outer assets clear of the decorative border.
+        if (obstacle->GetType() == ObstacleType::Cow)
+            position.x -= 0.12f;
 
-            if (deathDelayTimer >= GameOverDelay)
-            {
-                gameOverActive = true;
-                gameLosePlayed = true;
-                AudioPlayer::PlayGameLose();
-                ui->ShowGameOver();
-            }
+        obstacle->SetGroundPosition(position);
 
-            return;
-        }
+        showcaseObstacles.push_back(obstacle);
+    }
 
-        for (auto it = enemies.begin(); it != enemies.end();)
-        {
-            if ((*it)->ShouldDisappear())
-            {
-                scene->Remove(*it);
-                it = enemies.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
+    // Hazards last, furthest away: their models are the shortest, and the
+    // far end of the view has the least vertical room.
+    for (int index = 0; index < HazardTypeCount; ++index)
+    {
+        auto hazard = obstacleMeshes->CreateHazard(
+            HazardTypeFromIndex(index));
 
-        enemySpawnTimer += deltaTime;
+        hazard->SetGroundPosition(
+            GetShowcaseSlot(
+                HazardRowLanesAhead,
+                index,
+                HazardTypeCount,
+                HazardSpacing));
 
-        if (enemies.size() < MaxEnemies &&
-            enemySpawnTimer >= EnemySpawnInterval)
-            SpawnEnemy();
-
-        ui->SetHealth(player->GetHealth());
-
+        showcaseObstacles.push_back(hazard);
     }
 }
 
-bool Game::IsGameOver() const
+void Game::UpdateCamera()
 {
-    return gameOverActive;
-}
-
-void Game::Restart()
-{
-    if (!scene || !gameOverActive)
+    if (!camera || !pawn)
         return;
 
-    for (const auto& enemy : enemies)
-        scene->Remove(enemy);
-    enemies.clear();
+    // Aim a little past the pawn so slightly more of the road ahead is
+    // visible than the ground already crossed.
+    const glm::vec3 lookAhead(
+        0.0f,
+        0.0f,
+        -GameConfig::CameraLookAhead);
 
-    scene->Remove(player);
-    player.reset();
-
-    player = std::make_shared<Player>();
-    player->Initialize();
-    scene->Add(player);
-
-    enemySpawnTimer = 0.0f;
-    gameOverActive = false;
-    deathDelayTimer = 0.0f;
-    deathSequenceStarted = false;
-    gameLosePlayed = false;
-    ui->Reset();
-    SpawnEnemy();
-    AudioPlayer::PlayMusicLoop();
+    camera->SetTarget(
+        pawn->GetTransform().GetPosition() + lookAhead);
 }
 
-void Game::SpawnEnemy()
+void Game::Update(float deltaTime)
 {
-    if (!scene || !player || enemies.size() >= MaxEnemies)
-        return;
+    if (level)
+        level->Update(deltaTime);
 
-    auto enemy = std::make_shared<Enemy>(player);
-    enemy->Initialize();
+    if (pawn && pawn->IsActive())
+        pawn->Update(deltaTime);
 
-    std::uniform_int_distribution<int> sideDistribution(0, 1);
-    enemy->Spawn(sideDistribution(randomEngine) == 0);
-
-    scene->Add(enemy);
-    enemies.push_back(enemy);
-    enemySpawnTimer = 0.0f;
+    UpdateCamera();
 }
 
 void Game::Render()
 {
-    if (!scene || !renderer)
+    if (!renderer)
         return;
 
-    for (const auto& object : scene->GetObjects())
+    // Ground first, then everything standing on it. The depth buffer sorts
+    // the solid geometry, so this order only matters for the shadow, which
+    // is translucent and has to blend over ground that is already drawn.
+    if (level)
     {
-        if (!object)
-            continue;
+        for (const auto& lane : level->GetLanes())
+        {
+            if (lane)
+                renderer->Draw(*lane);
+        }
 
-        renderer->Draw(
-            object->GetTransform(),
-            object->GetSprite());
+        for (const auto& decoration : level->GetDecorations())
+        {
+            if (decoration)
+                renderer->Draw(*decoration);
+        }
     }
 
-    // UI is rendered last so it always remains above the game world.
-    if (ui)
-        ui->Render(*renderer);
+    // Every shadow before every model: shadows are translucent and have to
+    // blend over ground that has already been drawn.
+    for (const auto& piece : showcasePieces)
+    {
+        if (piece)
+            renderer->Draw(piece->GetShadow());
+    }
+
+    for (const auto& obstacle : showcaseObstacles)
+    {
+        if (obstacle)
+            renderer->Draw(obstacle->GetShadow());
+    }
+
+    if (pawn)
+        renderer->Draw(pawn->GetShadow());
+
+    for (const auto& piece : showcasePieces)
+    {
+        if (piece)
+            renderer->Draw(*piece);
+    }
+
+    for (const auto& obstacle : showcaseObstacles)
+    {
+        if (obstacle)
+            renderer->Draw(*obstacle);
+    }
+
+    if (pawn)
+        renderer->Draw(*pawn);
+
+    // Sprites last, after every opaque mesh.
+    //
+    // They are transparent and do not write depth, so anything drawn after
+    // them would ignore them and punch straight through. DrawAll brackets its
+    // own GL state and returns immediately while the list is empty, which it
+    // is until sprite assets exist.
+    if (spriteRenderer)
+        spriteRenderer->DrawAll(sprites);
+}
+
+std::size_t Game::AddSprite(const Sprite& sprite)
+{
+    sprites.push_back(sprite);
+
+    return sprites.size() - 1;
+}
+
+Sprite* Game::GetSprite(std::size_t index)
+{
+    if (index >= sprites.size())
+        return nullptr;
+
+    return &sprites[index];
+}
+
+void Game::RemoveSprite(std::size_t index)
+{
+    if (index >= sprites.size())
+        return;
+
+    sprites.erase(sprites.begin() + static_cast<std::ptrdiff_t>(index));
+}
+
+void Game::ClearSprites()
+{
+    sprites.clear();
+}
+
+std::size_t Game::GetSpriteCount() const
+{
+    return sprites.size();
+}
+
+void Game::SetViewportSize(float width, float height)
+{
+    if (camera)
+        camera->SetViewport(width, height);
+
+    if (spriteRenderer)
+        spriteRenderer->SetScreenSize(width, height);
 }
 
 void Game::Shutdown()
 {
-    AudioPlayer::StopAll();
+    sprites.clear();
 
-    if (renderer)
+    // Before the resource manager, because the renderer's shader and quad are
+    // GL objects that must go while the context is current.
+    if (spriteRenderer)
     {
-        renderer->Destroy();
-        renderer.reset();
+        spriteRenderer->Shutdown();
+        spriteRenderer.reset();
     }
 
-    player.reset();
+    // Props before the libraries: both hold the shared meshes, and every GPU
+    // buffer has to be released while the GL context is still alive.
+    showcasePieces.clear();
+    showcaseObstacles.clear();
 
-    enemies.clear();
+    pieceMeshes.reset();
+    obstacleMeshes.reset();
 
-    ui.reset();
+    pawn.reset();
 
-    background.reset();
+    level.reset();
 
-    scene.reset();
+    renderer.reset();
 
     camera.reset();
 
     ResourceManager::Shutdown();
 }
 
-Camera2D& Game::GetCamera()
+Camera3D& Game::GetCamera()
 {
     return *camera;
 }
 
-SpriteRenderer& Game::GetRenderer()
+MeshRenderer& Game::GetRenderer()
 {
     return *renderer;
 }
 
-Scene& Game::GetScene()
+Level& Game::GetLevel()
 {
-    return *scene;
+    return *level;
+}
+
+Pawn& Game::GetPawn()
+{
+    return *pawn;
+}
+
+PieceMeshLibrary& Game::GetPieceMeshes()
+{
+    return *pieceMeshes;
+}
+
+ObstacleMeshLibrary& Game::GetObstacleMeshes()
+{
+    return *obstacleMeshes;
+}
+
+SpriteRenderer& Game::GetSpriteRenderer()
+{
+    return *spriteRenderer;
 }

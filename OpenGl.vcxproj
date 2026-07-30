@@ -19,62 +19,58 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Src\UI\GameUI.cpp" />
-    <ClCompile Include="Src\Audio\AudioPlayer.cpp" />
-    <ClCompile Include="Src\Animation\AnimationClip.cpp" />
-    <ClCompile Include="Src\Animation\AnimationFrame.cpp" />
-    <ClCompile Include="Src\Animation\Animator.cpp" />
-    <ClCompile Include="Src\Core\Scene.cpp" />
-    <ClCompile Include="Src\Gameplay\Enemy.cpp" />
-    <ClCompile Include="Src\Gameplay\NPC.cpp" />
-    <ClCompile Include="Src\Gameplay\Projectile.cpp" />
-    <ClCompile Include="Src\Graphics\Camera2D.cpp" />
+    <ClCompile Include="Src\Gameplay\ChessPiece.cpp" />
+    <ClCompile Include="Src\Gameplay\Lane.cpp" />
+    <ClCompile Include="Src\Gameplay\Level.cpp" />
+    <ClCompile Include="Src\Gameplay\Obstacle.cpp" />
+    <ClCompile Include="Src\Gameplay\ObstacleMeshFactory.cpp" />
+    <ClCompile Include="Src\Gameplay\Pawn.cpp" />
+    <ClCompile Include="Src\Gameplay\PieceMeshFactory.cpp" />
+    <ClCompile Include="Src\Graphics\Camera3D.cpp" />
+    <ClCompile Include="Src\Graphics\Mesh.cpp" />
+    <ClCompile Include="Src\Graphics\MeshBuilder.cpp" />
+    <ClCompile Include="Src\Graphics\MeshRenderer.cpp" />
     <ClCompile Include="Src\Core\Game.cpp" />
-    <ClCompile Include="Src\Core\GameObject.cpp" />
+    <ClCompile Include="Src\Core\GroundEntity.cpp" />
+    <ClCompile Include="Src\Core\GroundShadow.cpp" />
+    <ClCompile Include="Src\Core\WorldObject.cpp" />
     <ClCompile Include="Src\Input\Input.cpp" />
     <ClCompile Include="Src\main.cpp" />
-    <ClCompile Include="Src\Physics\BoxCollider.cpp" />
-    <ClCompile Include="Src\Physics\CircleCollider.cpp" />
-    <ClCompile Include="Src\Physics\Collider.cpp" />
-    <ClCompile Include="Src\Physics\PhysicsBody.cpp" />
-    <ClCompile Include="Src\Gameplay\Player.cpp" />
-    <ClCompile Include="Src\Resources\AssetCache.cpp" />
     <ClCompile Include="Src\Resources\ResourceManager.cpp" />
     <ClCompile Include="Src\Graphics\Shader.cpp" />
     <ClCompile Include="Src\Graphics\Sprite.cpp" />
+    <ClCompile Include="Src\Graphics\SpriteAnimation.cpp" />
     <ClCompile Include="Src\Graphics\SpriteRenderer.cpp" />
     <ClCompile Include="Src\Graphics\SpriteSheet.cpp" />
     <ClCompile Include="Src\Dependencies\STB\stb_image.cpp" />
     <ClCompile Include="Src\Graphics\Texture2D.cpp" />
-    <ClCompile Include="Src\Core\Transform.cpp" />
+    <ClCompile Include="Src\Core\Transform3D.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Src\UI\GameUI.h" />
-    <ClInclude Include="Src\Audio\AudioPlayer.h" />
-    <ClInclude Include="Src\Animation\AnimationClip.h" />
-    <ClInclude Include="Src\Animation\AnimationFrame.h" />
-    <ClInclude Include="Src\Core\Scene.h" />
-    <ClInclude Include="Src\Gameplay\Enemy.h" />
-    <ClInclude Include="Src\Gameplay\NPC.h" />
-    <ClInclude Include="Src\Animation\Animator.h" />
-    <ClInclude Include="Src\Graphics\Camera2D.h" />
+    <ClInclude Include="Src\Gameplay\ChessPiece.h" />
+    <ClInclude Include="Src\Gameplay\Lane.h" />
+    <ClInclude Include="Src\Gameplay\Level.h" />
+    <ClInclude Include="Src\Gameplay\Obstacle.h" />
+    <ClInclude Include="Src\Gameplay\ObstacleMeshFactory.h" />
+    <ClInclude Include="Src\Gameplay\Pawn.h" />
+    <ClInclude Include="Src\Gameplay\PieceMeshFactory.h" />
+    <ClInclude Include="Src\Graphics\Camera3D.h" />
+    <ClInclude Include="Src\Graphics\Mesh.h" />
+    <ClInclude Include="Src\Graphics\MeshBuilder.h" />
+    <ClInclude Include="Src\Graphics\MeshRenderer.h" />
     <ClInclude Include="Src\Core\Game.h" />
-    <ClInclude Include="Src\Core\GameObject.h" />
+    <ClInclude Include="Src\Core\GameConfig.h" />
+    <ClInclude Include="Src\Core\GroundEntity.h" />
+    <ClInclude Include="Src\Core\GroundShadow.h" />
+    <ClInclude Include="Src\Core\WorldObject.h" />
     <ClInclude Include="Src\Input\Input.h" />
-    <ClInclude Include="Src\Input\Key.h" />
-    <ClInclude Include="Src\Input\MouseButton.h" />
-    <ClInclude Include="Src\Gameplay\Player.h" />
-    <ClInclude Include="Src\Gameplay\PlayerState.h" />
     <ClInclude Include="Src\Graphics\Shader.h" />
     <ClInclude Include="Src\Graphics\Sprite.h" />
+    <ClInclude Include="Src\Graphics\SpriteAnimation.h" />
     <ClInclude Include="Src\Graphics\SpriteRenderer.h" />
     <ClInclude Include="Src\Graphics\SpriteSheet.h" />
     <ClInclude Include="Src\Graphics\Texture2D.h" />
-    <ClInclude Include="Src\Core\Transform.h" />
-    <ClInclude Include="Src\Physics\BoxCollider.h" />
-    <ClInclude Include="Src\Physics\CircleCollider.h" />
-    <ClInclude Include="Src\Physics\Collider.h" />
-    <ClInclude Include="Src\Physics\PhysicsBody.h" />
+    <ClInclude Include="Src\Core\Transform3D.h" />
     <ClInclude Include="Src\Resources\ResourceManager.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -156,13 +152,16 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(SolutionDir)Src\Core;$(SolutionDir)Src\Audio;$(SolutionDir)Src\UI;$(SolutionDir)Src\Graphics;$(SolutionDir)Src\Animation;$(SolutionDir)Src\Input;$(SolutionDir)Src\Physics;$(SolutionDir)Src\Gameplay;$(SolutionDir)Src\Resources;$(SolutionDir)Src\Dependencies\GLFW\Include;$(SolutionDir)Src\Dependencies\GLEW\Include;$(SolutionDir)Src\Dependencies\glm;$(SolutionDir)Src\Dependencies\STB</AdditionalIncludeDirectories>
-      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(SolutionDir)Src\Dependencies\GLFW\Lib;$(SolutionDir)Src\Dependencies\GLEW\Lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;opengl32.lib;User32.lib;Gdi32.lib;Shell32.lib;Winmm.lib;glew32s.lib</AdditionalDependencies>
+      <AdditionalDependencies>glfw3_mt.lib;opengl32.lib;User32.lib;Gdi32.lib;Shell32.lib;Winmm.lib;glew32s.lib</AdditionalDependencies>
+      <!-- The bundled GLEW archive omits its build-machine PDB. Its code is
+           complete; only step-through symbols inside GLEW are unavailable. -->
+      <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

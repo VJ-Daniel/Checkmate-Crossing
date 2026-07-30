@@ -5,7 +5,7 @@
 #include <glm.hpp>
 #include <glew.h>
 
-/// Compiles, links and configures the GLSL program used by sprite rendering.
+/// Compiles, links and configures the GLSL program used by world rendering.
 class Shader
 {
 public:

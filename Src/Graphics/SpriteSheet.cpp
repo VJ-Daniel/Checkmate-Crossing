@@ -65,25 +65,24 @@ glm::vec2 SpriteSheet::GetFrameSize() const
         static_cast<float>(texture->GetHeight()) / rows);
 }
 
+SpriteRegion SpriteSheet::GetRegion(
+    int column,
+    int row) const
+{
+    // Delegated rather than recomputed. Sheets used to do their own top-down
+    // UV maths, which disagreed with the flipped textures the sprite system
+    // loads and would have drawn every frame upside down.
+    return SpriteRegion::FromGridCounts(column, row, columns, rows);
+}
+
 void SpriteSheet::GetUV(
     int column,
     int row,
     glm::vec2& uvMin,
     glm::vec2& uvMax) const
 {
-    if (!texture)
-    {
-        uvMin = glm::vec2(0.0f);
-        uvMax = glm::vec2(1.0f);
-        return;
-    }
+    const SpriteRegion region = GetRegion(column, row);
 
-    float cellWidth = 1.0f / static_cast<float>(columns);
-    float cellHeight = 1.0f / static_cast<float>(rows);
-
-    uvMin.x = column * cellWidth;
-    uvMin.y = row * cellHeight;
-
-    uvMax.x = uvMin.x + cellWidth;
-    uvMax.y = uvMin.y + cellHeight;
+    uvMin = region.min;
+    uvMax = region.max;
 }

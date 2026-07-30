@@ -1,34 +1,26 @@
 /*
     ============================================================
-    Gangster Survival - OpenGL
-
-    Author: Leonardo Moura
-    Date: 2026
+    Checkmate Crossing - OpenGL
 
     Description:
 
-    This application demonstrates the fundamentals of modern
-    OpenGL by implementing an animated 2D survival game.
+    A 3D arcade obstacle-crossing game with a medieval chess theme.
+    The player guides a pawn across a battlefield of dangerous lanes
+    to rescue the captured king.
 
-    The project initializes an OpenGL rendering context, loads
-    shaders, textures, sprite sheets and audio, and manages an
-    interactive real-time game loop with enemies and a HUD.
+    This build is the project foundation: it stands up the window, the
+    rendering pipeline, the battlefield and the player placeholder, so
+    gameplay can be layered on top without restructuring anything.
 
-    The player can walk, run, jump and perform three melee attacks
-    using the keyboard or a compatible gamepad.
-
-    Features:
+    Features in this build:
 
         - OpenGL and GLFW window initialization
         - GLEW function loading
-        - Orthographic 2D camera
-        - Animated sprite sheets
-        - Delta Time movement and jumping
-        - Keyboard and gamepad input
-        - Enemy AI, combat and spawning
-        - Health HUD and Game Over screen
-        - Music and sound effects
-        - Restartable real-time game loop
+        - Tilted orthographic 3D camera, ready to follow the player
+        - Indexed 3D meshes drawn from VAO / VBO / EBO
+        - Directional and ambient lighting
+        - Lane-based battlefield built from the level design
+        - Placeholder pawn at the starting position
 
     Technologies:
 
@@ -40,18 +32,7 @@
         - Windows Multimedia API
         - C++
 
-    Learning Topics:
-
-        - Rendering Pipeline
-        - Window and Context Management
-        - Model / View / Projection Matrices
-        - Texture and Sprite Rendering
-        - Animation State Machines
-        - User Input
-        - Basic Enemy AI and Collision
-        - Audio Playback
-        - UI and Game State Architecture
-
+    Based on the Gangster Survival OpenGL framework by Leonardo Moura.
     ============================================================
 */
 
@@ -75,7 +56,10 @@ namespace
     void FramebufferSizeCallback(GLFWwindow*, int width, int height)
     {
         glViewport(0, 0, width, height);
-        game.GetCamera().SetViewport(
+
+        // Goes through the game rather than straight to the camera, so the
+        // screen-space sprite projection is resized along with it.
+        game.SetViewportSize(
             static_cast<float>(width),
             static_cast<float>(height));
     }
@@ -84,20 +68,21 @@ namespace
     {
         if (!glfwInit())
         {
-            std::cerr << "Erro ao inicializar GLFW.\n";
+            std::cerr << "Failed to initialize GLFW.\n";
             return false;
         }
 
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_DEPTH_BITS, 24);
 
         window = glfwCreateWindow(
-            ScreenWidth, ScreenHeight, "Gangster Run 2D", nullptr, nullptr);
+            ScreenWidth, ScreenHeight, "Checkmate Crossing", nullptr, nullptr);
 
         if (!window)
         {
-            std::cerr << "Erro ao criar a janela.\n";
+            std::cerr << "Failed to create the window.\n";
             glfwTerminate();
             return false;
         }
@@ -109,13 +94,18 @@ namespace
         glewExperimental = GL_TRUE;
         if (glewInit() != GLEW_OK)
         {
-            std::cerr << "Erro ao inicializar GLEW.\n";
+            std::cerr << "Failed to initialize GLEW.\n";
             glfwDestroyWindow(window);
             glfwTerminate();
             return false;
         }
 
         glViewport(0, 0, ScreenWidth, ScreenHeight);
+
+        // Required now that the world is 3D: without it, whichever object
+        // was drawn last would cover the ones in front of it.
+        glEnable(GL_DEPTH_TEST);
+
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         return true;
@@ -133,7 +123,7 @@ int main()
         static_cast<float>(ScreenWidth),
         static_cast<float>(ScreenHeight)))
     {
-        std::cerr << "Erro ao inicializar o jogo.\n";
+        std::cerr << "Failed to initialize the game.\n";
         glfwDestroyWindow(window);
         glfwTerminate();
         return -1;
@@ -149,9 +139,6 @@ int main()
             Input::IsGamepadButtonPressed(GamepadButton::Start))
             glfwSetWindowShouldClose(window, GLFW_TRUE);
 
-        if (game.IsGameOver() && Input::IsKeyPressed(Key::Enter))
-            game.Restart();
-
         const double currentTime = glfwGetTime();
         const float deltaTime = static_cast<float>(
             std::min(currentTime - previousTime, 0.05));
@@ -159,8 +146,8 @@ int main()
 
         game.Update(deltaTime);
 
-        glClearColor(0.04f, 0.08f, 0.10f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.11f, 0.13f, 0.18f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         game.Render();
 
         glfwSwapBuffers(window);
