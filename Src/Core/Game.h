@@ -1,17 +1,24 @@
 #pragma once
 
 #include <memory>
-#include <random>
 #include <vector>
 
-#include "Camera2D.h"
-#include "Enemy.h"
-#include "GameUI.h"
-#include "Player.h"
-#include "Scene.h"
+#include "Camera3D.h"
+#include "ChessPiece.h"
+#include "Level.h"
+#include "MeshRenderer.h"
+#include "Obstacle.h"
+#include "ObstacleMeshFactory.h"
+#include "Pawn.h"
+#include "PieceMeshFactory.h"
+#include "Sprite.h"
 #include "SpriteRenderer.h"
 
-/// Owns the high-level lifetime and state transitions of one game session.
+/// Owns the high-level lifetime of one Checkmate Crossing session: the
+/// camera, the world renderer, the battlefield and the player's pawn.
+///
+/// This is the foundation stage, so there is no game state machine yet.
+/// When one is needed it belongs here, wrapping Update and Render.
 class Game
 {
 public:
@@ -20,60 +27,111 @@ public:
 
     ~Game();
 
-    /// Creates rendering services, scene objects, UI and the first enemy.
+    /// Creates the rendering services, builds the level and spawns the pawn.
     bool Initialize(
         float screenWidth,
         float screenHeight);
 
-    /// Advances gameplay using frame-independent elapsed time.
+    /// Advances the world using frame-independent elapsed time.
     void Update(float deltaTime);
 
-    /// Draws the world first and the UI overlay last.
+    /// Draws the battlefield first and the pawn on top of it.
     void Render();
 
-    /// Releases OpenGL, scene, UI, resource and audio objects safely.
+    /// Releases OpenGL, world and resource objects safely.
     void Shutdown();
 
-    /// Rebuilds the dynamic match state after Game Over.
-    void Restart();
+    Camera3D& GetCamera();
 
-    /// Reports whether the Game Over overlay is accepting restart input.
-    bool IsGameOver() const;
+    MeshRenderer& GetRenderer();
 
-    Camera2D& GetCamera();
+    Level& GetLevel();
 
-    SpriteRenderer& GetRenderer();
+    Pawn& GetPawn();
 
-    Scene& GetScene();
+    PieceMeshLibrary& GetPieceMeshes();
+
+    ObstacleMeshLibrary& GetObstacleMeshes();
+
+    SpriteRenderer& GetSpriteRenderer();
+
+    //---------------------------------------------------------
+    // Sprites
+    //
+    // The sprite system is wired up and idle: there are no sprite assets in
+    // the project yet, so the list below is empty and the sprite pass costs
+    // nothing. Registering one sprite is all it takes to start using it.
+    //---------------------------------------------------------
+
+    /// Queues a sprite to be drawn every frame until it is removed. Returns
+    /// its index, which is what RemoveSprite and GetSprite take.
+    std::size_t AddSprite(const Sprite& sprite);
+
+    /// Mutable access, so an owner can move or re-frame its sprite - for
+    /// instance driving it from a SpriteAnimation each Update.
+    Sprite* GetSprite(std::size_t index);
+
+    void RemoveSprite(std::size_t index);
+
+    void ClearSprites();
+
+    std::size_t GetSpriteCount() const;
+
+    /// Keeps screen-space sprites correctly scaled after a window resize.
+    void SetViewportSize(float width, float height);
 
 private:
 
-    /// Spawns one enemy at a randomly selected horizontal edge.
-    void SpawnEnemy();
+    /// TEMPORARY: lines the placeholder models up in front of the pawn so
+    /// they can be inspected side by side - chess pieces, then stationary
+    /// props, then hazards, one row each.
+    ///
+    /// Delete this method and its call in Initialize once the level places
+    /// these for real. Nothing else depends on it.
+    void BuildShowcase();
 
-    std::shared_ptr<Camera2D> camera;
+    /// Fills one evenly spaced row of a showcase, centred on the board.
+    /// Returns the ground position for the given slot.
+    glm::vec3 GetShowcaseSlot(
+        int lanesAhead,
+        int slot,
+        int slotCount,
+        float spacing) const;
 
-    std::shared_ptr<SpriteRenderer> renderer;
+    /// Applies the reference game's camera setup: an orthographic camera
+    /// tilted down over the battlefield, at the angle and zoom recorded in
+    /// GameConfig.
+    void ConfigureCamera();
 
-    std::shared_ptr<Scene> scene;
+    /// Points the camera at the pawn. Called on start-up and every frame,
+    /// so this already behaves as a follow camera: it simply has nothing
+    /// to follow until the pawn can move.
+    void UpdateCamera();
 
-    std::shared_ptr<GameObject> background;
+    std::shared_ptr<Camera3D> camera;
 
-    std::shared_ptr<Player> player;
+    std::shared_ptr<MeshRenderer> renderer;
 
-    std::shared_ptr<GameUI> ui;
+    std::shared_ptr<Level> level;
 
-    std::vector<std::shared_ptr<Enemy>> enemies;
+    std::shared_ptr<Pawn> pawn;
 
-    std::mt19937 randomEngine;
+    /// Own one model per type. Held by the game so the meshes are released
+    /// in Shutdown, while the GL context is still alive.
+    std::shared_ptr<PieceMeshLibrary> pieceMeshes;
 
-    float enemySpawnTimer = 0.0f;
+    std::shared_ptr<ObstacleMeshLibrary> obstacleMeshes;
 
-    bool gameOverActive = false;
+    /// Shared quad and shader for every sprite. Held here so its GL objects
+    /// are released in Shutdown, while the context is still alive.
+    std::shared_ptr<SpriteRenderer> spriteRenderer;
 
-    float deathDelayTimer = 0.0f;
+    /// Sprites drawn after the opaque world, every frame. Empty until sprite
+    /// assets exist.
+    std::vector<Sprite> sprites;
 
-    bool deathSequenceStarted = false;
+    /// TEMPORARY: the showcase rows described above.
+    std::vector<std::shared_ptr<ChessPiece>> showcasePieces;
 
-    bool gameLosePlayed = false;
+    std::vector<std::shared_ptr<Obstacle>> showcaseObstacles;
 };

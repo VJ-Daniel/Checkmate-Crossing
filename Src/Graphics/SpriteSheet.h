@@ -4,9 +4,17 @@
 
 #include <glm.hpp>
 
+#include "Sprite.h"
 #include "Texture2D.h"
 
-/// Divides a texture into a regular grid and calculates frame UV bounds.
+/// Describes a texture as a regular grid of frames.
+///
+/// This is a convenience layer over SpriteRegion for the case where a sheet's
+/// grid is fixed and worth naming once: it pairs the texture with its layout
+/// so callers ask for "column 2, row 1" without repeating the grid size.
+///
+/// All of its UV maths goes through SpriteRegion, so the whole project has one
+/// convention: column 0, row 0 is the sheet's TOP-LEFT frame.
 class SpriteSheet
 {
 public:
@@ -30,7 +38,13 @@ public:
 
     int GetRows() const;
 
+    /// Frame size in pixels.
     glm::vec2 GetFrameSize() const;
+
+    /// UV region of one frame. Column 0, row 0 is the top-left frame.
+    SpriteRegion GetRegion(
+        int column,
+        int row) const;
 
     void GetUV(
         int column,

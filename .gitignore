@@ -2,6 +2,9 @@
 .vs/
 *.VC.db
 *.VC.opendb
+*.sdf
+*.opensdf
+*.ncb
 *.suo
 *.user
 *.userosscache
@@ -9,12 +12,53 @@
 
 # IntelliSense
 ipch/
+*.ipch
 
-# Build output
+# Build output directories
 Debug/
 Release/
 x64/
 x86/
+/OpenGl/
+build/
+bin/
+obj/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
 
-# Logs
+# Compiler and linker intermediates
+*.o
+*.obj
+*.iobj
+*.ipdb
+*.pdb
+*.ilk
+*.idb
+*.pch
+*.tlog
+*.lastbuildstate
+*.recipe
+*.res
+*.exp
+*.exe
+
+# Downloaded source-asset archives
+/Src/Resources/*.zip
+
+# Logs and temporary files
 *.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*~
+.cache/
+*.cache
+~$*
+
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

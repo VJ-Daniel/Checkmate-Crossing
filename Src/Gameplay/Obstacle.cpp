@@ -1,0 +1,101 @@
+/*
+    ============================================================
+    Checkmate Crossing - Obstacle
+
+    Names the stationary props and moving hazards from the GDD, and
+    gives them a common base. Standing on the ground and casting a
+    shadow are handled by GroundEntity.
+
+    The models themselves are built by ObstacleMeshFactory.
+    ============================================================
+*/
+
+#include "Obstacle.h"
+
+ObstacleType ObstacleTypeFromIndex(int index)
+{
+    switch (index)
+    {
+    case 0:  return ObstacleType::Tree;
+    case 1:  return ObstacleType::Rock;
+    case 2:  return ObstacleType::Fence;
+    case 3:  return ObstacleType::Wall;
+    case 4:  return ObstacleType::Bush;
+    case 5:  return ObstacleType::Spikes;
+    case 6:  return ObstacleType::Cow;
+    default: return ObstacleType::Palisade;
+    }
+}
+
+HazardType HazardTypeFromIndex(int index)
+{
+    switch (index)
+    {
+    case 0:  return HazardType::Arrow;
+    case 1:  return HazardType::Spear;
+    case 2:  return HazardType::Cannonball;
+    case 3:  return HazardType::RollingRock;
+    default: return HazardType::RollingLog;
+    }
+}
+
+const char* GetObstacleTypeName(ObstacleType type)
+{
+    switch (type)
+    {
+    case ObstacleType::Tree:     return "Tree";
+    case ObstacleType::Rock:     return "Rock";
+    case ObstacleType::Fence:    return "Fence";
+    case ObstacleType::Wall:     return "Wall";
+    case ObstacleType::Bush:     return "Bush";
+    case ObstacleType::Spikes:   return "Spikes";
+    case ObstacleType::Cow:      return "Cow";
+    case ObstacleType::Palisade: return "Palisade";
+    }
+
+    return "Unknown";
+}
+
+const char* GetHazardTypeName(HazardType type)
+{
+    switch (type)
+    {
+    case HazardType::Arrow:       return "Arrow";
+    case HazardType::Spear:       return "Spear";
+    case HazardType::Cannonball:  return "Cannonball";
+    case HazardType::RollingRock: return "Rolling Rock";
+    case HazardType::RollingLog:  return "Rolling Log";
+    }
+
+    return "Unknown";
+}
+
+StaticObstacle::StaticObstacle(ObstacleType type)
+    : type(type)
+{
+}
+
+ObstacleType StaticObstacle::GetType() const
+{
+    return type;
+}
+
+const char* StaticObstacle::GetName() const
+{
+    return GetObstacleTypeName(type);
+}
+
+Hazard::Hazard(HazardType type)
+    : type(type)
+{
+}
+
+HazardType Hazard::GetType() const
+{
+    return type;
+}
+
+const char* Hazard::GetName() const
+{
+    return GetHazardTypeName(type);
+}
