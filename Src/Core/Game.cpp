@@ -102,10 +102,19 @@ bool Game::Initialize(
     pawn->SetSpawnPosition(level->GetPlayerSpawnPosition());
     pawn->Initialize();
 
+    // NOTE(Ayub): required for the pawn's free movement to follow each
+    // lane's terrain height. Non-owning; Level outlives Pawn here.
+    pawn->SetLevel(level.get());
+
     pieceMeshes = std::make_shared<PieceMeshLibrary>();
     obstacleMeshes = std::make_shared<ObstacleMeshLibrary>();
 
+    hazardManager = std::make_shared<HazardManager>(*obstacleMeshes);
+    collectibleManager = std::make_shared<CollectibleManager>(*pieceMeshes);
+
     BuildShowcase();
+    SpawnExampleHazards();
+    SpawnExampleCollectibles();
 
     // Frame the pawn before the first frame is drawn, so it is already in
     // view the moment the window opens.
@@ -228,6 +237,207 @@ void Game::BuildShowcase()
     }
 }
 
+void Game::SpawnExampleHazards()
+{
+    if (!level || !hazardManager)
+        return;
+
+    const float halfWidth = Level::GetPlayableHalfWidth();
+
+    // Arrow lane: sweeps the full width and loops back forever, per the
+    // GDD's "arrows... range covers the full horizontal width of the
+    // map." It loops on its own, so it needs no repeating spawner.
+    {
+        const int row = level->GetSpawnRow() + 3;
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            const float z = lane->GetCenterZ();
+            const float y = lane->GetSurfaceHeight();
+
+            hazardManager->SpawnLinearHazard(
+                HazardType::Arrow,
+                glm::vec3(-halfWidth - 0.5f, y, z),
+                glm::vec3(halfWidth + 0.5f, y, z),
+                3.0f,
+                true);
+        }
+    }
+
+    // Spear: "similar speed to arrows, but curved trajectory." Each flight
+    // is one-shot, so a repeating spawner keeps a new one coming.
+    // NOTE(Ayub/Liyuu): no dedicated Spear lane exists in Level 1 yet --
+    // placed in a SafeGrass row purely so it's visible for testing.
+    {
+        const int row = level->GetSpawnRow() + 5;
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            const float z = lane->GetCenterZ();
+            const float y = lane->GetSurfaceHeight();
+
+            hazardManager->RegisterRepeatingSpawn(
+                3.5f,
+                [this, y, z, halfWidth]()
+                {
+                    hazardManager->SpawnCurvedHazard(
+                        HazardType::Spear,
+                        glm::vec3(-halfWidth - 0.5f, y, z),
+                        glm::vec3(halfWidth + 0.5f, y, z),
+                        3.2f,
+                        1.2f);
+                });
+        }
+    }
+
+    // Cannonball: "faster than arrows... range is shorter and reaches
+    // about 70% of the map's width." One-shot per launch, so it also
+    // needs a repeating spawner.
+    {
+        const int row = level->GetSpawnRow() + 12;
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            const float z = lane->GetCenterZ();
+            const float y = lane->GetSurfaceHeight();
+            const float range = halfWidth * 0.7f;
+
+            hazardManager->RegisterRepeatingSpawn(
+                2.5f,
+                [this, y, z, range]()
+                {
+                    hazardManager->SpawnLinearHazard(
+                        HazardType::Cannonball,
+                        glm::vec3(-range, y, z),
+                        glm::vec3(range, y, z),
+                        5.5f,
+                        false);
+                });
+        }
+    }
+
+    // Rolling Rock / Rolling Log: the GDD calls both "vertical"
+    // projectiles, meaning they roll along a lane's depth (Z), not
+    // sideways across it like arrows/cannonballs. Neither has a
+    // dedicated lane in Level 1 yet, so these roll through a short span
+    // of SafeGrass rows purely for testing.
+    {
+        const int startRow = level->GetSpawnRow() + 4;
+        const int endRow = level->GetSpawnRow() + 6;
+
+        if (const Lane* startLane = level->GetLane(startRow))
+        {
+            const float y = startLane->GetSurfaceHeight();
+            const float startZ = Level::RowToWorldZ(startRow);
+            const float endZ = Level::RowToWorldZ(endRow);
+
+            // "A slow vertical projectile with a large hit area."
+            hazardManager->RegisterRepeatingSpawn(
+                4.0f,
+                [this, y, startZ, endZ]()
+                {
+                    hazardManager->SpawnLinearHazard(
+                        HazardType::RollingRock,
+                        glm::vec3(-2.0f, y, startZ),
+                        glm::vec3(-2.0f, y, endZ),
+                        1.2f,
+                        true);
+                });
+
+            // "Similar to the rolling rock, but faster."
+            hazardManager->RegisterRepeatingSpawn(
+                3.0f,
+                [this, y, startZ, endZ]()
+                {
+                    hazardManager->SpawnLinearHazard(
+                        HazardType::RollingLog,
+                        glm::vec3(2.0f, y, startZ),
+                        glm::vec3(2.0f, y, endZ),
+                        2.2f,
+                        true);
+                });
+        }
+    }
+
+    // Fireball/Lightning lane: a curved fireball (repeating; each flight
+    // is one-shot, and expiry automatically leaves a burn patch behind --
+    // see HazardManager::Update) plus a lightning warning-then-strike
+    // zone, which cycles forever on its own and needs no repeat spawner.
+    {
+        const int row = level->GetSpawnRow() + 18;
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            const float z = lane->GetCenterZ();
+            const float y = lane->GetSurfaceHeight();
+
+            hazardManager->RegisterRepeatingSpawn(
+                4.5f,
+                [this, y, z]()
+                {
+                    hazardManager->SpawnCurvedHazard(
+                        HazardType::Fireball,
+                        glm::vec3(-2.0f, y, z + 1.0f),
+                        glm::vec3(2.0f, y, z - 1.0f),
+                        2.0f,
+                        1.0f);
+                });
+
+            hazardManager->SpawnWarningHazard(
+                glm::vec3(-halfWidth * 0.5f, y, z),
+                1.0f,
+                0.6f);
+        }
+    }
+
+    // Cow: chases the pawn indefinitely from just ahead of the start area.
+    // It follows continuously on its own, so it needs no repeat spawner.
+    {
+        const int row = level->GetSpawnRow() + 15;
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            hazardManager->SpawnCow(
+                glm::vec3(halfWidth * 0.6f, lane->GetSurfaceHeight(), lane->GetCenterZ()),
+                2.5f);
+        }
+    }
+}
+
+void Game::SpawnExampleCollectibles()
+{
+    if (!level || !collectibleManager)
+        return;
+
+    const float halfWidth = Level::GetPlayableHalfWidth();
+
+    // One of each ally, spaced out through the safe lanes near the start
+    // so all four are easy to test without dodging every hazard first.
+    const PieceType allies[4] =
+    {
+        PieceType::Bishop,
+        PieceType::Knight,
+        PieceType::Rook,
+        PieceType::Queen
+    };
+
+    for (int index = 0; index < 4; ++index)
+    {
+        const int row = level->GetSpawnRow() + 1 + index * 2;
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            const float x = (index % 2 == 0)
+                ? halfWidth * 0.35f
+                : -halfWidth * 0.35f;
+
+            collectibleManager->Spawn(
+                allies[index],
+                glm::vec3(x, lane->GetSurfaceHeight(), lane->GetCenterZ()));
+        }
+    }
+}
+
 void Game::UpdateCamera()
 {
     if (!camera || !pawn)
@@ -251,6 +461,34 @@ void Game::Update(float deltaTime)
 
     if (pawn && pawn->IsActive())
         pawn->Update(deltaTime);
+
+    if (hazardManager && pawn)
+        hazardManager->Update(deltaTime, pawn->GetTransform().GetPosition());
+
+    // TEMPORARY: stands in for Kaung's real collision detection. Delete
+    // once his system calls Pawn::CollectPiece(...) directly on overlap.
+    if (collectibleManager && pawn)
+    {
+        PieceType collectedType = PieceType::Pawn;
+
+        if (collectibleManager->TryCollect(
+            pawn->GetTransform().GetPosition(),
+            GameConfig::CollectiblePickupRadius,
+            collectedType))
+        {
+            pawn->CollectPiece(collectedType);
+        }
+    }
+
+    // Bishop's ability mutates the world (removing nearby hazards), which
+    // is why Pawn only raises a pulse instead of doing this itself -- see
+    // the note on ConsumeBishopActivationPulse().
+    if (pawn && pawn->ConsumeBishopActivationPulse() && hazardManager)
+    {
+        hazardManager->RemoveNearest(
+            pawn->GetTransform().GetPosition(),
+            GameConfig::BishopRemovalCount);
+    }
 
     UpdateCamera();
 }
@@ -292,6 +530,24 @@ void Game::Render()
             renderer->Draw(obstacle->GetShadow());
     }
 
+    if (hazardManager)
+    {
+        for (const auto& hazard : hazardManager->GetHazards())
+        {
+            if (hazard)
+                renderer->Draw(hazard->GetVisual().GetShadow());
+        }
+    }
+
+    if (collectibleManager)
+    {
+        for (const auto& piece : collectibleManager->GetCollectibles())
+        {
+            if (piece)
+                renderer->Draw(piece->GetShadow());
+        }
+    }
+
     if (pawn)
         renderer->Draw(pawn->GetShadow());
 
@@ -305,6 +561,24 @@ void Game::Render()
     {
         if (obstacle)
             renderer->Draw(*obstacle);
+    }
+
+    if (hazardManager)
+    {
+        for (const auto& hazard : hazardManager->GetHazards())
+        {
+            if (hazard)
+                renderer->Draw(hazard->GetVisual());
+        }
+    }
+
+    if (collectibleManager)
+    {
+        for (const auto& piece : collectibleManager->GetCollectibles())
+        {
+            if (piece)
+                renderer->Draw(*piece);
+        }
     }
 
     if (pawn)
@@ -379,6 +653,18 @@ void Game::Shutdown()
     showcasePieces.clear();
     showcaseObstacles.clear();
 
+    if (hazardManager)
+    {
+        hazardManager->Clear();
+        hazardManager.reset();
+    }
+
+    if (collectibleManager)
+    {
+        collectibleManager->Clear();
+        collectibleManager.reset();
+    }
+
     pieceMeshes.reset();
     obstacleMeshes.reset();
 
@@ -421,6 +707,16 @@ PieceMeshLibrary& Game::GetPieceMeshes()
 ObstacleMeshLibrary& Game::GetObstacleMeshes()
 {
     return *obstacleMeshes;
+}
+
+HazardManager& Game::GetHazardManager()
+{
+    return *hazardManager;
+}
+
+CollectibleManager& Game::GetCollectibleManager()
+{
+    return *collectibleManager;
 }
 
 SpriteRenderer& Game::GetSpriteRenderer()

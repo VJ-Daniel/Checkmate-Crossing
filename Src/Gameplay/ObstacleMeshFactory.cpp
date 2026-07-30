@@ -386,6 +386,53 @@ namespace ObstacleMeshFactory
             model.footprintDepth = 0.34f;
             break;
         }
+
+        // NOTE(Ayub): rough placeholders for the two hazard types added to
+        // HazardType (see Obstacle.h) -- same "few boxes, flat colour" rule
+        // as everything else here, just not visually tuned yet.
+        case HazardType::Fireball:
+        {
+            const float radius = 0.20f;
+            const float flightHeight = 0.36f;
+
+            builder.SetColor(ObstaclePalette::FireEdge);
+
+            AddBlob(
+                builder,
+                glm::vec3(0.0f, flightHeight, 0.0f),
+                radius);
+
+            builder.SetColor(ObstaclePalette::FireCore);
+
+            AddBlob(
+                builder,
+                glm::vec3(0.0f, flightHeight, 0.0f),
+                radius * 0.6f);
+
+            model.height = flightHeight + radius;
+            model.footprintWidth = radius * 2.0f;
+            break;
+        }
+
+        case HazardType::Lightning:
+        {
+            // A flat glowing warning tile at ground level. HazardManager's
+            // WarningThenStrike pattern is what actually toggles danger on
+            // and off; John can key a flash/VFX off MovingHazard::IsActive()
+            // instead of this mesh changing shape.
+            const float tileSize = 0.9f;
+            const float tileThickness = 0.03f;
+
+            builder.SetColor(ObstaclePalette::LightningGlow);
+            builder.AddSlab(
+                tileSize, tileSize,
+                0.0f, tileThickness);
+
+            model.height = tileThickness;
+            model.footprintWidth = tileSize;
+            model.footprintDepth = tileSize;
+            break;
+        }
         }
 
         model.mesh = builder.Build();

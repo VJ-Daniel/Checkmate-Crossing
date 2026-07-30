@@ -23,18 +23,24 @@ enum class ObstacleType
 ///
 /// Each of these will eventually travel along a lane, but nothing here
 /// moves: they exist purely as reusable assets.
+///
+/// NOTE(Ayub): added Fireball and Lightning, which the GDD and task list
+/// both call out as moving/area hazards but which weren't in this enum
+/// yet. Flagging per team protocol since this is a shared taxonomy file.
 enum class HazardType
 {
     Arrow,
     Spear,
     Cannonball,
     RollingRock,
-    RollingLog
+    RollingLog,
+    Fireball,
+    Lightning
 };
 
 constexpr int ObstacleTypeCount = 8;
 
-constexpr int HazardTypeCount = 5;
+constexpr int HazardTypeCount = 7;
 
 ObstacleType ObstacleTypeFromIndex(int index);
 

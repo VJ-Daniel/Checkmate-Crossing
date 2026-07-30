@@ -35,7 +35,9 @@ HazardType HazardTypeFromIndex(int index)
     case 1:  return HazardType::Spear;
     case 2:  return HazardType::Cannonball;
     case 3:  return HazardType::RollingRock;
-    default: return HazardType::RollingLog;
+    case 4:  return HazardType::RollingLog;
+    case 5:  return HazardType::Fireball;
+    default: return HazardType::Lightning;
     }
 }
 
@@ -65,6 +67,8 @@ const char* GetHazardTypeName(HazardType type)
     case HazardType::Cannonball:  return "Cannonball";
     case HazardType::RollingRock: return "Rolling Rock";
     case HazardType::RollingLog:  return "Rolling Log";
+    case HazardType::Fireball:    return "Fireball";
+    case HazardType::Lightning:   return "Lightning";
     }
 
     return "Unknown";

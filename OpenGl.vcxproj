@@ -20,8 +20,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Src\Gameplay\ChessPiece.cpp" />
+    <ClCompile Include="Src\Gameplay\CollectibleManager.cpp" />
+    <ClCompile Include="Src\Gameplay\HazardManager.cpp" />
     <ClCompile Include="Src\Gameplay\Lane.cpp" />
     <ClCompile Include="Src\Gameplay\Level.cpp" />
+    <ClCompile Include="Src\Gameplay\MovingHazard.cpp" />
     <ClCompile Include="Src\Gameplay\Obstacle.cpp" />
     <ClCompile Include="Src\Gameplay\ObstacleMeshFactory.cpp" />
     <ClCompile Include="Src\Gameplay\Pawn.cpp" />
@@ -48,8 +51,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Src\Gameplay\ChessPiece.h" />
+    <ClInclude Include="Src\Gameplay\CollectibleManager.h" />
+    <ClInclude Include="Src\Gameplay\HazardManager.h" />
     <ClInclude Include="Src\Gameplay\Lane.h" />
     <ClInclude Include="Src\Gameplay\Level.h" />
+    <ClInclude Include="Src\Gameplay\MovingHazard.h" />
     <ClInclude Include="Src\Gameplay\Obstacle.h" />
     <ClInclude Include="Src\Gameplay\ObstacleMeshFactory.h" />
     <ClInclude Include="Src\Gameplay\Pawn.h" />

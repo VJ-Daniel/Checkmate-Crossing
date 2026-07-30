@@ -2,15 +2,26 @@
 
 #include <glm.hpp>
 
+#include "ChessPiece.h"
 #include "GroundShadow.h"
 #include "WorldObject.h"
 
-/// The player's chess pawn, currently a placeholder cube.
+class Level;
+
+/// The player's chess pawn.
 ///
-/// It deliberately has no movement, collision, health or abilities yet: it
-/// exists so the camera has something to frame and so the starting position
-/// from GDD section 4 is already correct. Movement will arrive as an
-/// Update override, which the base class already calls every frame.
+/// GDD section 2: free top-down movement (not tile-hopping), clamped to the
+/// playable width, following the ground height of whatever lane the pawn is
+/// currently over. Collision response (blocking, damage, knockback) is
+/// deliberately NOT handled here -- Ayub owns how the pawn moves, Kaung owns
+/// what happens when it collides with something. This class only exposes
+/// the movement state (velocity, current row) those other systems need.
+///
+/// GDD section 3: also owns the collectible chess-piece ability loop --
+/// banking a collected ally, activating it on Space, and the resulting
+/// speed/immunity/shield effects. As with movement, this class only
+/// exposes the resulting state (IsImmuneToHazards, HasShield, ...); it is
+/// Kaung's collision response that should actually read and act on it.
 class Pawn : public WorldObject
 {
 public:
@@ -19,6 +30,11 @@ public:
 
     /// Builds the placeholder mesh and applies the spawn pose.
     void Initialize() override;
+
+    /// Reads input, moves freely along X/Z, clamps to the playable width,
+    /// follows the terrain height of the pawn's current lane, and advances
+    /// any active chess-piece ability.
+    void Update(float deltaTime) override;
 
     /// Sets the point on the ground the pawn stands on. The pawn's own
     /// height is added automatically, so callers work in ground coordinates.
@@ -30,11 +46,97 @@ public:
     /// calling SetSpawnPosition first.
     void Respawn();
 
-    /// The pawn owns its shadow and keeps it underneath itself, so it will
-    /// follow along for free once the pawn can move.
+    /// Non-owning reference used to look up ground height as the pawn moves
+    /// freely across lanes. Call once, after both the level and the pawn
+    /// have been constructed (see Game::Initialize).
+    void SetLevel(const Level* level);
+
+    float GetMoveSpeed() const;
+
+    void SetMoveSpeed(float unitsPerSecond);
+
+    /// Current world-space X/Z velocity, already including any active
+    /// speed-boost ability. Read by collision response (Kaung) and
+    /// animation blending (John); this class does not clear or react to
+    /// collisions itself.
+    const glm::vec3& GetVelocity() const;
+
+    bool IsMoving() const;
+
+    /// Row of the lane the pawn currently stands over, derived from its
+    /// world Z. Hazard spawning and collision can key off this to know
+    /// which lane's rules currently apply.
+    int GetCurrentRow() const;
+
+    /// The pawn owns its shadow and keeps it underneath itself.
     const WorldObject& GetShadow() const;
 
+    //-----------------------------------------------------------
+    // Chess-piece abilities (GDD section 3)
+    //-----------------------------------------------------------
+
+    /// Called when the pawn touches a collectible ally on the field.
+    /// Only Bishop/Knight/Rook/Queen are meaningful here; anything else
+    /// is ignored. Replaces whatever was previously banked (only one
+    /// stored ability at a time, per the GDD's "Space: activate stored
+    /// chess ability, if available").
+    void CollectPiece(PieceType type);
+
+    bool HasStoredPiece() const;
+
+    /// Only meaningful when HasStoredPiece() is true.
+    PieceType GetStoredPieceType() const;
+
+    /// True while a timed ability (Knight/Rook/Queen) is currently in
+    /// effect. Bishop has no ongoing state -- see
+    /// ConsumeBishopActivationPulse() instead.
+    bool IsAbilityActive() const;
+
+    /// Only meaningful when IsAbilityActive() is true.
+    PieceType GetActiveAbilityType() const;
+
+    /// Multiplier currently applied to the pawn's base move speed: 1.0
+    /// normally, boosted while Knight or Queen is active. John's animation
+    /// blending can also read this to speed up a run cycle, for instance.
+    float GetSpeedMultiplier() const;
+
+    /// True while hazard collisions should be ignored entirely (Knight or
+    /// Queen). Kaung's collision response should check this before
+    /// applying any hazard effect.
+    bool IsImmuneToHazards() const;
+
+    /// True while a shield charge is available (Rook or Queen). Kaung's
+    /// collision response should call ConsumeShield() instead of applying
+    /// damage when this is true.
+    bool HasShield() const;
+
+    /// Spends the shield charge, blocking whatever hit triggered it.
+    void ConsumeShield();
+
+    /// True exactly once, on the frame Bishop's ability activates, then
+    /// clears itself. Bishop removes nearby obstacles/hazards, which
+    /// means mutating the world -- this class deliberately does not hold
+    /// a reference to HazardManager to do that itself; whoever owns both
+    /// (currently Game) should check this every frame and act on it.
+    bool ConsumeBishopActivationPulse();
+
 private:
+
+    /// Turns WASD/arrow input into a normalized move direction and applies
+    /// it as velocity (scaled by any active speed ability); also faces the
+    /// pawn toward its movement direction and checks for an ability
+    /// activation key press.
+    void HandleInput();
+
+    /// Snaps the pawn's Y to the surface height of whichever lane its
+    /// current Z falls over, so raised/sunken lanes read as real steps.
+    void ApplyTerrainHeight();
+
+    /// Consumes the stored piece (if any) and starts its effect.
+    void TryActivateAbility();
+
+    /// Counts down an active timed ability and clears it on expiry.
+    void UpdateAbility(float deltaTime);
 
     /// Puts the shadow back under the pawn's current position.
     void UpdateShadow();
@@ -45,4 +147,28 @@ private:
     float groundHeight;
 
     GroundShadow shadow;
+
+    const Level* level = nullptr;
+
+    float moveSpeed = 4.0f;
+
+    glm::vec3 velocity = glm::vec3(0.0f);
+
+    bool spaceKeyWasDown = false;
+
+    // --- Ability state ---
+
+    bool hasStoredPiece = false;
+
+    PieceType storedPieceType = PieceType::Bishop;
+
+    bool abilityActive = false;
+
+    PieceType activeAbilityType = PieceType::Bishop;
+
+    float abilityTimeRemaining = 0.0f;
+
+    bool shieldAvailable = false;
+
+    bool bishopPulsePending = false;
 };

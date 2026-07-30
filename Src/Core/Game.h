@@ -5,6 +5,8 @@
 
 #include "Camera3D.h"
 #include "ChessPiece.h"
+#include "CollectibleManager.h"
+#include "HazardManager.h"
 #include "Level.h"
 #include "MeshRenderer.h"
 #include "Obstacle.h"
@@ -52,6 +54,17 @@ public:
     PieceMeshLibrary& GetPieceMeshes();
 
     ObstacleMeshLibrary& GetObstacleMeshes();
+
+    /// Every active moving hazard (arrows, spears, cannonballs, fireballs,
+    /// rolling rocks/logs, the cow). Kaung's collision system should read
+    /// this every frame; nothing here reacts to the player itself.
+    HazardManager& GetHazardManager();
+
+    /// Every collectible ally waiting to be picked up. Kaung's collision
+    /// system should call Pawn::CollectPiece(...) when the pawn touches
+    /// one; see the note on CollectibleManager::TryCollect for the
+    /// placeholder currently standing in for that.
+    CollectibleManager& GetCollectibleManager();
 
     SpriteRenderer& GetSpriteRenderer();
 
@@ -108,6 +121,16 @@ private:
     /// to follow until the pawn can move.
     void UpdateCamera();
 
+    /// TEMPORARY: spawns one example of each moving-hazard pattern so the
+    /// system is visible before Liyuu's level data decides real placement.
+    /// Delete this method and its call in Initialize once that lands,
+    /// exactly like BuildShowcase above.
+    void SpawnExampleHazards();
+
+    /// TEMPORARY: same idea as SpawnExampleHazards, for the four
+    /// collectible allies. Delete once Liyuu's level data places these.
+    void SpawnExampleCollectibles();
+
     std::shared_ptr<Camera3D> camera;
 
     std::shared_ptr<MeshRenderer> renderer;
@@ -121,6 +144,10 @@ private:
     std::shared_ptr<PieceMeshLibrary> pieceMeshes;
 
     std::shared_ptr<ObstacleMeshLibrary> obstacleMeshes;
+
+    std::shared_ptr<HazardManager> hazardManager;
+
+    std::shared_ptr<CollectibleManager> collectibleManager;
 
     /// Shared quad and shader for every sprite. Held here so its GL objects
     /// are released in Shutdown, while the context is still alive.

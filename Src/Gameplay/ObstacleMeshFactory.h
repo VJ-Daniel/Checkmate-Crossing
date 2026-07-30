@@ -25,6 +25,12 @@ namespace ObstaclePalette
     inline const glm::vec3 Iron = glm::vec3(0.68f, 0.70f, 0.74f);
     inline const glm::vec3 Hide = glm::vec3(0.90f, 0.89f, 0.86f);
     inline const glm::vec3 HideDark = glm::vec3(0.24f, 0.22f, 0.22f);
+
+    // NOTE(Ayub): rough placeholder tints for the two new hazard types
+    // (Fireball, Lightning) added to HazardType -- restyle freely.
+    inline const glm::vec3 FireCore = glm::vec3(0.95f, 0.45f, 0.12f);
+    inline const glm::vec3 FireEdge = glm::vec3(0.70f, 0.18f, 0.06f);
+    inline const glm::vec3 LightningGlow = glm::vec3(0.95f, 0.92f, 0.55f);
 }
 
 /// A finished prop model plus the measurements the game needs from it.
