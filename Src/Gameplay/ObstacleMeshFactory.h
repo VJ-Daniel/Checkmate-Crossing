@@ -41,6 +41,16 @@ struct ObstacleModel
 
     float footprintDepth = 0.0f;
 
+    /// Radius of a round prop, or zero for the box-shaped ones.
+    ///
+    /// The factory is the only place that knows how big a cannonball or a
+    /// log actually is, so it reports it here rather than leaving the number
+    /// to be guessed twice - once by a future circular collision bound, and
+    /// once by RollingMotion, which divides distance by exactly this to work
+    /// out how far the prop has turned.
+    ///
+    /// Nothing consumes it yet; no movement or collision exists.
+    float boundingRadius = 0.0f;
 };
 
 /// Builds the placeholder obstacle and hazard models.
@@ -78,16 +88,6 @@ namespace ObstacleMeshFactory
         float topWidth,
         float bottomY,
         float topY);
-
-    /// A rounded blob: three overlapping boxes crossed on the three axes.
-    ///
-    /// This is the cheapest shape that reads as a sphere from any angle
-    /// while staying obviously voxel-built, and it is what both the
-    /// cannonball and rolling rock are made of.
-    void AddBlob(
-        MeshBuilder& builder,
-        const glm::vec3& center,
-        float radius);
 
     /// A horizontal shaft running along X with a stepped point on its +X
     /// end, shared by the arrow and the spear.

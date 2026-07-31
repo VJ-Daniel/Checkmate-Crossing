@@ -46,47 +46,16 @@ namespace
     /// tuning the camera.
     constexpr unsigned int DecorationSeed = 20260729u;
 
-    /// Ground colour for each kind of lane.
+    /// One continuous grass palette for the whole battlefield.
     ///
-    /// Safe ground stays green as the GDD describes, while hazard lanes are
-    /// darker and earthier so the player can read the danger before the
-    /// obstacles themselves exist.
-    glm::vec3 LaneColor(LaneType type)
+    /// Colour depends only on the physical row, never on LaneType. This keeps
+    /// gameplay sections visually connected while the small value shift
+    /// produces regular mowing stripes without textures or extra geometry.
+    glm::vec3 GrassColorForRow(int row)
     {
-        switch (type)
-        {
-        case LaneType::StartArea:
-            return glm::vec3(0.42f, 0.60f, 0.30f);
-
-        case LaneType::SafeGrass:
-            return glm::vec3(0.24f, 0.48f, 0.22f);
-
-        case LaneType::Arrow:
-            return glm::vec3(0.34f, 0.29f, 0.24f);
-
-        case LaneType::SpikeMud:
-            return glm::vec3(0.30f, 0.24f, 0.18f);
-
-        case LaneType::Checkpoint:
-            return glm::vec3(0.72f, 0.62f, 0.28f);
-
-        case LaneType::Cannonball:
-            return glm::vec3(0.34f, 0.34f, 0.36f);
-
-        case LaneType::FenceTree:
-            return glm::vec3(0.20f, 0.38f, 0.20f);
-
-        case LaneType::FireballLightning:
-            return glm::vec3(0.32f, 0.20f, 0.20f);
-
-        case LaneType::FinalSafeArea:
-            return glm::vec3(0.30f, 0.52f, 0.26f);
-
-        case LaneType::KingsCage:
-            return glm::vec3(0.42f, 0.36f, 0.55f);
-        }
-
-        return glm::vec3(0.5f);
+        return (row % 2 == 0)
+            ? glm::vec3(0.27f, 0.52f, 0.24f)
+            : glm::vec3(0.245f, 0.48f, 0.22f);
     }
 
     /// Two families of scenery: dark green woodland and grey battlefield
@@ -115,9 +84,10 @@ void Level::Build()
     decorations.clear();
     nextRow = 0;
 
-    // Lanes are solid blocks, not flat planes, so a raised lane shows a real
-    // vertical face where it meets a sunken one. One cube is shared by every
-    // lane and every decoration, so this still costs a single vertex buffer.
+    // Lanes are solid blocks rather than flat planes, so the battlefield has
+    // a real edge all the way round instead of a paper-thin one. One cube is
+    // shared by every lane and every decoration, so this still costs a
+    // single vertex buffer.
     if (!blockMesh)
         blockMesh = Mesh::CreateCube();
 
@@ -135,11 +105,9 @@ void Level::Build()
     // The pawn stands on the last start-area row.
     spawnRow = nextRow - 1;
 
-    // The first hazard lane is kept short and close so its far bank lands
-    // in the upper middle of the opening view. A sunken lane only shows a
-    // vertical face on the side that rises away from the camera, so the
-    // bank is the one step the player can actually see at start-up - push
-    // it any further out and the whole board reads as flat stripes again.
+    // The first hazard lane is kept short and close, so the player meets a
+    // dangerous row inside the opening view rather than after a long walk
+    // across safe ground.
     AddLanes(LaneType::SafeGrass, 1);
     AddLanes(LaneType::Arrow, 2);
 
@@ -168,11 +136,17 @@ void Level::AddLanes(LaneType type, int count)
 
         lane->SetMesh(blockMesh);
 
-        // The lane block runs from a shared floor up to its own surface
-        // height, so the whole level reads as one solid slab of ground with
-        // roads cut into it.
+        // Every lane block is identical: same height, same thickness, same
+        // width. A row differs from its neighbours only in its colour and
+        // in which slice of Z it occupies, so the blocks butt together into
+        // one unbroken floor with no step, seam or trench anywhere between
+        // the start area and the king's cage.
+        //
+        // The surface still comes from the lane rather than from GameConfig,
+        // so this loop keeps working unchanged if a section is ever given a
+        // height of its own again.
         const float surface = lane->GetSurfaceHeight();
-        const float thickness = surface + GameConfig::BoardBaseThickness;
+        const float thickness = GameConfig::BoardBaseThickness;
 
         // Lanes are drawn far wider than the walkable board so the ground
         // always fills the screen, the way the reference game does.
@@ -188,15 +162,10 @@ void Level::AddLanes(LaneType type, int count)
             surface - thickness * 0.5f,
             RowToWorldZ(row));
 
-        // Neighbouring rows alternate slightly in brightness. This is what
-        // makes individual lanes readable and gives the chessboard feel the
-        // GDD asks for without needing a texture yet.
-        glm::vec3 color = LaneColor(type);
-
-        if (row % 2 != 0)
-            color *= 0.92f;
-
-        lane->SetColor(glm::vec4(color, 1.0f));
+        // The lane keeps its gameplay type, but its appearance belongs to the
+        // continuous field. Alternating physical rows creates subtle,
+        // perfectly regular mowing stripes across every level section.
+        lane->SetColor(glm::vec4(GrassColorForRow(row), 1.0f));
 
         lane->Initialize();
 
@@ -297,11 +266,22 @@ const Lane* Level::GetLane(int row) const
     return lanes[row].get();
 }
 
+int Level::FindRowOfType(LaneType type) const
+{
+    for (const auto& lane : lanes)
+    {
+        if (lane && lane->GetType() == type)
+            return lane->GetRow();
+    }
+
+    return -1;
+}
+
 glm::vec3 Level::GetPlayerSpawnPosition() const
 {
-    // The spawn lane is raised, so the pawn has to stand on its surface
-    // rather than at y = 0.
-    float surface = GameConfig::RaisedLaneSurface;
+    // Read off the spawn lane rather than assumed, so the pawn follows the
+    // floor wherever it ends up.
+    float surface = GameConfig::GroundSurface;
 
     if (spawnRow >= 0 && spawnRow < static_cast<int>(lanes.size()))
     {

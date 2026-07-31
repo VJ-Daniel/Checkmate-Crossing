@@ -81,6 +81,67 @@ public:
         float bottomY,
         float topY);
 
+    //---------------------------------------------------------
+    // Flat-shaded faces
+    //
+    // The primitives everything curved is assembled from. Each face gets its
+    // own copies of its corners and one normal computed from the winding, so
+    // the surface stays faceted instead of smoothing out - which is what
+    // keeps a sphere looking carved rather than rendered.
+    //
+    // Corners must be given counter-clockwise as seen from outside.
+    //---------------------------------------------------------
+
+    void AddFlatTriangle(
+        const glm::vec3& a,
+        const glm::vec3& b,
+        const glm::vec3& c);
+
+    void AddFlatQuad(
+        const glm::vec3& a,
+        const glm::vec3& b,
+        const glm::vec3& c,
+        const glm::vec3& d);
+
+    /// A faceted sphere, built as a ring-and-segment grid.
+    ///
+    /// Low counts are the point: 8 segments give an octagonal silhouette that
+    /// reads as round while every facet stays visible.
+    ///
+    /// irregularity pushes each corner in or out by up to that fraction of
+    /// the radius, turning a ball into a rock. The displacement fades to zero
+    /// at the poles, so the top and bottom stay exactly one radius from the
+    /// centre and a lumpy rock still sits flat on the ground.
+    ///
+    /// seed makes that lumpiness deterministic, so a cached model is the same
+    /// shape every run.
+    void AddFacetedSphere(
+        const glm::vec3& center,
+        float radius,
+        int segments,
+        int rings,
+        float irregularity = 0.0f,
+        unsigned int seed = 0u);
+
+    /// Which world axis a cylinder's length runs along.
+    enum class CylinderAxis
+    {
+        X,
+        Z
+    };
+
+    /// A faceted cylinder, with flat side facets and two capped ends.
+    ///
+    /// A rolling cylinder's axis has to be perpendicular to the way it
+    /// travels, so the axis is a parameter rather than baked in: a prop that
+    /// crosses the lanes along X needs its length along Z, and vice versa.
+    void AddFacetedCylinder(
+        const glm::vec3& center,
+        float radius,
+        float length,
+        int sides,
+        CylinderAxis axis);
+
     /// Uploads everything added so far as one mesh.
     std::shared_ptr<Mesh> Build() const;
 
@@ -88,7 +149,8 @@ public:
 
     bool IsEmpty() const;
 
-    std::size_t GetBoxCount() const;
+    /// Triangles accumulated so far. Boxes contribute twelve each.
+    std::size_t GetTriangleCount() const;
 
 private:
 

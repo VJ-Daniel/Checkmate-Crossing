@@ -26,18 +26,28 @@ namespace GameConfig
     /// reaches both screen edges, exactly like the reference game.
     constexpr float LaneDrawWidth = 24.0f;
 
-    /// How far the board extends below y = 0. Lanes are solid blocks rather
-    /// than flat planes, so raised sections show a real vertical face where
-    /// they meet the sunken ones. That step is the main depth cue in an
-    /// orthographic view.
+    /// How far the board extends below its surface.
+    ///
+    /// Lanes are solid blocks rather than flat planes, so the battlefield
+    /// has a real edge all the way round instead of a paper-thin one.
+    /// Nothing inside the board shows it: the floor is flat end to end, so
+    /// the only vertical faces left are around the perimeter, well outside
+    /// the view.
     constexpr float BoardBaseThickness = 0.7f;
 
-    /// Height of the walking surface for raised (grass) and sunken (road)
-    /// lanes. The difference between the two is what you actually see: the
-    /// step shows up as roughly 37 screen pixels of vertical face.
-    constexpr float RaisedLaneSurface = 0.45f;
-
-    constexpr float SunkenLaneSurface = 0.0f;
+    /// Height of the walking surface - for every lane in the level.
+    ///
+    /// One value, deliberately. The battlefield is a single flat floor and a
+    /// lane type is paint on it, not terracing: what makes a row dangerous
+    /// is the obstacles and hazards crossing it, not a step down into it.
+    ///
+    /// Zero, so a model authored with y = 0 at its base stands at world
+    /// y = 0 with no correction anywhere.
+    ///
+    /// Depth in the orthographic view therefore comes entirely from what
+    /// stands on the floor - the props, the scenery border and the
+    /// checkpoint gate - rather than from the floor itself.
+    constexpr float GroundSurface = 0.0f;
 
     //---------------------------------------------------------
     // Camera

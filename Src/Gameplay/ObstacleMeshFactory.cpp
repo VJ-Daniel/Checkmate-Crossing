@@ -49,23 +49,6 @@ namespace ObstacleMeshFactory
         return topY;
     }
 
-    void AddBlob(
-        MeshBuilder& builder,
-        const glm::vec3& center,
-        float radius)
-    {
-        // Three boxes crossed on the three axes. The long axis of each one
-        // fills out one direction while the other two stay narrow, so the
-        // corners of the overall shape are cut away and the silhouette reads
-        // as round from any angle - for three boxes instead of dozens.
-        const float wide = radius * 2.0f;
-        const float narrow = radius * 1.42f;
-
-        builder.AddBox(center, glm::vec3(wide, narrow, narrow));
-        builder.AddBox(center, glm::vec3(narrow, wide, narrow));
-        builder.AddBox(center, glm::vec3(narrow, narrow, wide));
-    }
-
     void AddShaftWithTip(
         MeshBuilder& builder,
         float centerY,
@@ -325,18 +308,23 @@ namespace ObstacleMeshFactory
 
         case HazardType::Cannonball:
         {
+            // A compact faceted sphere. Eight segments give an octagonal
+            // outline, which is round enough to read as a ball while every
+            // facet stays visible and blocky.
             const float radius = 0.17f;
             const float flightHeight = 0.32f;
 
             builder.SetColor(ObstaclePalette::DarkStone);
 
-            AddBlob(
-                builder,
+            builder.AddFacetedSphere(
                 glm::vec3(0.0f, flightHeight, 0.0f),
-                radius);
+                radius,
+                8,
+                6);
 
             model.height = flightHeight + radius;
             model.footprintWidth = radius * 2.0f;
+            model.boundingRadius = radius;
             break;
         }
 
@@ -344,46 +332,77 @@ namespace ObstacleMeshFactory
         {
             // Larger than the airborne cannonball and touching the ground,
             // so its silhouette communicates the GDD's slower, heavier roll.
+            //
+            // Nine segments rather than eight, plus a little corner
+            // displacement, so it is visibly round but never symmetrical -
+            // an even count would line the facets up front to back and make
+            // it look machined.
             const float radius = 0.28f;
+            const float irregularity = 0.14f;
 
             builder.SetColor(ObstaclePalette::Stone);
 
-            AddBlob(
-                builder,
+            builder.AddFacetedSphere(
                 glm::vec3(0.0f, radius, 0.0f),
-                radius);
+                radius,
+                9,
+                6,
+                irregularity,
+                1337u);
 
+            // The displacement fades out at the poles, so the rock still
+            // touches the ground at exactly y = 0 and stands 2r tall.
             model.height = radius * 2.0f;
-            model.footprintWidth = radius * 2.0f;
+            model.footprintWidth = radius * 2.0f * (1.0f + irregularity);
+            model.boundingRadius = radius;
             break;
         }
 
         case HazardType::RollingLog:
         {
-            // A long timber across X, ready to roll along a lane on Z later.
-            // Oversized end caps keep it readable as a log instead of a beam.
-            const float halfHeight = 0.17f;
+            // A ten-sided timber whose length runs along Z.
+            //
+            // Z, not X, because hazards cross the board along X - the arrow
+            // and the spear both point that way - and a cylinder has to lie
+            // perpendicular to the way it rolls. Along X it would have been
+            // rolling about its own length like a drill.
+            //
+            // The orientation pays off twice: it also turns one flat circular
+            // end towards the camera, which is the only view in which a
+            // cylinder reads as a cylinder rather than a plank.
+            const float radius = 0.18f;
+            const float length = 0.88f;
 
             builder.SetColor(ObstaclePalette::Wood);
-            builder.AddBox(
-                glm::vec3(0.0f, halfHeight, 0.0f),
-                glm::vec3(0.76f, 0.30f, 0.30f));
 
+            builder.AddFacetedCylinder(
+                glm::vec3(0.0f, radius, 0.0f),
+                radius,
+                length,
+                10,
+                MeshBuilder::CylinderAxis::Z);
+
+            // A slightly proud darker ring at each end, so the cut faces read
+            // as timber rather than as the ends of a dowel.
             builder.SetColor(ObstaclePalette::DarkWood);
 
             for (int end = -1; end <= 1; end += 2)
             {
-                builder.AddBox(
+                builder.AddFacetedCylinder(
                     glm::vec3(
-                        static_cast<float>(end) * 0.40f,
-                        halfHeight,
-                        0.0f),
-                    glm::vec3(0.08f, 0.34f, 0.34f));
+                        0.0f,
+                        radius,
+                        static_cast<float>(end) * (length * 0.5f - 0.035f)),
+                    radius * 1.05f,
+                    0.07f,
+                    10,
+                    MeshBuilder::CylinderAxis::Z);
             }
 
-            model.height = halfHeight * 2.0f;
-            model.footprintWidth = 0.84f;
-            model.footprintDepth = 0.34f;
+            model.height = radius * 2.0f;
+            model.footprintWidth = radius * 2.0f;
+            model.footprintDepth = length;
+            model.boundingRadius = radius;
             break;
         }
         }

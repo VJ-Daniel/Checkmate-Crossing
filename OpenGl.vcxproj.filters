@@ -81,6 +81,9 @@
     <ClCompile Include="Src\Gameplay\ChessPiece.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Src\Gameplay\RollingMotion.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Src\Gameplay\PieceMeshFactory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -91,6 +94,18 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Src\Gameplay\ObstacleMeshFactory.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Gameplay\GateMeshFactory.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Gameplay\CheckpointGate.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Gameplay\CageMeshFactory.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Gameplay\KingsCage.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -158,6 +173,9 @@
     <ClInclude Include="Src\Gameplay\ChessPiece.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Src\Gameplay\RollingMotion.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="Src\Gameplay\PieceMeshFactory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -168,6 +186,18 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Src\Gameplay\ObstacleMeshFactory.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Gameplay\GateMeshFactory.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Gameplay\CheckpointGate.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Gameplay\CageMeshFactory.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Gameplay\KingsCage.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
