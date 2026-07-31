@@ -48,6 +48,15 @@ public:
     /// this rather than assuming a flat board.
     const Lane* GetLane(int row) const;
 
+    /// First row occupied by a lane of the given type, or -1 when the level
+    /// has none.
+    ///
+    /// Anything that belongs at a named point of the level - the checkpoint
+    /// gate now, the king's cage later - asks for its row this way instead
+    /// of counting the layout by hand and going stale the moment a section
+    /// is made longer.
+    int FindRowOfType(LaneType type) const;
+
     /// How far from the centre the pawn may walk, for later clamping.
     static float GetPlayableHalfWidth();
 

@@ -104,6 +104,11 @@ bool Game::Initialize(
 
     pieceMeshes = std::make_shared<PieceMeshLibrary>();
     obstacleMeshes = std::make_shared<ObstacleMeshLibrary>();
+    gateMeshes = std::make_shared<GateMeshLibrary>();
+    cageMeshes = std::make_shared<CageMeshLibrary>();
+
+    BuildCheckpointGate();
+    BuildKingsCage();
 
     BuildShowcase();
 
@@ -144,13 +149,13 @@ glm::vec3 Game::GetShowcaseSlot(
 {
     const int row = level->GetSpawnRow() + lanesAhead;
 
-    // Stand the row on a real lane, so it sits on that lane's surface rather
-    // than assuming the board is flat.
+    // Stand the row on a real lane, so it rests on that lane's surface
+    // rather than on an assumed height.
     const Lane* lane = level->GetLane(row);
 
     const float surface = lane
         ? lane->GetSurfaceHeight()
-        : GameConfig::RaisedLaneSurface;
+        : GameConfig::GroundSurface;
 
     const float firstX =
         -spacing * static_cast<float>(slotCount - 1) * 0.5f;
@@ -228,6 +233,86 @@ void Game::BuildShowcase()
     }
 }
 
+void Game::BuildCheckpointGate()
+{
+    if (!level || !gateMeshes)
+        return;
+
+    const int row = level->FindRowOfType(LaneType::Checkpoint);
+
+    const Lane* lane = level->GetLane(row);
+
+    if (!lane)
+        return;
+
+    checkpointGate = std::make_shared<CheckpointGate>();
+
+    checkpointGate->Build(*gateMeshes);
+
+    // Centred on the board and standing on the checkpoint lane's own
+    // surface, so the wall run crosses the level exactly where the GDD puts
+    // the checkpoint rather than at an assumed height.
+    checkpointGate->SetGroundPosition(
+        glm::vec3(
+            0.0f,
+            lane->GetSurfaceHeight(),
+            lane->GetCenterZ()));
+}
+
+void Game::BuildKingsCage()
+{
+    if (!level || !pieceMeshes || !cageMeshes)
+        return;
+
+    kingsCage.reset();
+    capturedKing.reset();
+
+    const int firstRow = level->FindRowOfType(LaneType::KingsCage);
+
+    const Lane* firstLane = level->GetLane(firstRow);
+
+    if (!firstLane)
+        return;
+
+    // Centre the objective over the whole consecutive King's Cage area,
+    // rather than pinning it to the first row. This is visual placement only:
+    // the lane types, counts and gameplay layout remain untouched.
+    int lastRow = firstRow;
+
+    while (const Lane* nextLane = level->GetLane(lastRow + 1))
+    {
+        if (nextLane->GetType() != LaneType::KingsCage)
+            break;
+
+        ++lastRow;
+    }
+
+    const Lane* lastLane = level->GetLane(lastRow);
+
+    const float centerZ = lastLane
+        ? (firstLane->GetCenterZ() + lastLane->GetCenterZ()) * 0.5f
+        : firstLane->GetCenterZ();
+
+    const glm::vec3 cageGround(
+        0.0f,
+        firstLane->GetSurfaceHeight(),
+        centerZ);
+
+    kingsCage = std::make_shared<KingsCage>();
+    kingsCage->Build(*cageMeshes);
+    kingsCage->SetGroundPosition(cageGround);
+
+    // The prisoner stays a normal reusable King model. His ground is the
+    // top of the cage's solid base, so his feet do not clip into the plinth.
+    capturedKing = pieceMeshes->CreatePiece(
+        PieceType::King,
+        PieceTeam::White);
+
+    capturedKing->SetGroundPosition(
+        cageGround +
+        glm::vec3(0.0f, KingsCage::GetFloorHeight(), 0.0f));
+}
+
 void Game::UpdateCamera()
 {
     if (!camera || !pawn)
@@ -292,8 +377,41 @@ void Game::Render()
             renderer->Draw(obstacle->GetShadow());
     }
 
+    if (checkpointGate)
+        renderer->Draw(checkpointGate->GetShadow());
+
+    if (capturedKing)
+        renderer->Draw(capturedKing->GetShadow());
+
     if (pawn)
         renderer->Draw(pawn->GetShadow());
+
+    // The gate is several meshes rather than one, because its two leaves
+    // turn on their own hinges. The renderer neither knows nor cares: each
+    // part is an ordinary WorldObject carrying its own transform.
+    if (checkpointGate)
+    {
+        for (const auto& part : checkpointGate->GetParts())
+        {
+            if (part)
+                renderer->Draw(*part);
+        }
+    }
+
+    // The frame is the cage's root mesh. The barred door is deliberately a
+    // second object with its origin on the hinge, ready for a future rescue
+    // animation without changing either mesh.
+    if (kingsCage)
+        renderer->Draw(*kingsCage);
+
+    if (capturedKing)
+        renderer->Draw(*capturedKing);
+
+    if (kingsCage)
+    {
+        if (WorldObject* door = kingsCage->GetDoor())
+            renderer->Draw(*door);
+    }
 
     for (const auto& piece : showcasePieces)
     {
@@ -378,9 +496,14 @@ void Game::Shutdown()
     // buffer has to be released while the GL context is still alive.
     showcasePieces.clear();
     showcaseObstacles.clear();
+    capturedKing.reset();
+    kingsCage.reset();
+    checkpointGate.reset();
 
     pieceMeshes.reset();
     obstacleMeshes.reset();
+    cageMeshes.reset();
+    gateMeshes.reset();
 
     pawn.reset();
 
@@ -421,6 +544,21 @@ PieceMeshLibrary& Game::GetPieceMeshes()
 ObstacleMeshLibrary& Game::GetObstacleMeshes()
 {
     return *obstacleMeshes;
+}
+
+CheckpointGate* Game::GetCheckpointGate()
+{
+    return checkpointGate.get();
+}
+
+KingsCage* Game::GetKingsCage()
+{
+    return kingsCage.get();
+}
+
+ChessPiece* Game::GetCapturedKing()
+{
+    return capturedKing.get();
 }
 
 SpriteRenderer& Game::GetSpriteRenderer()

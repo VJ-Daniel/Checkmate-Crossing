@@ -4,9 +4,9 @@
 
 /// The kind of row the pawn is standing on.
 ///
-/// Taken straight from the level layout in GDD section 4. Right now the type
-/// only picks the lane's colour, but it is the hook obstacle spawning,
-/// checkpoints and the win condition will all read from later.
+/// Taken straight from the level layout in GDD section 4. The type is
+/// gameplay metadata for obstacle spawning, checkpoints and the win
+/// condition; it does not change the continuous grass appearance.
 enum class LaneType
 {
     StartArea,
@@ -43,9 +43,14 @@ public:
 
     /// Height of the walkable top surface of this lane.
     ///
-    /// Safe lanes sit raised and hazard lanes sit sunken, so the seam
-    /// between them shows a real vertical face. Anything standing on this
+    /// The same for every lane: the battlefield is one continuous flat floor
+    /// from the start area to the king's cage. Anything standing on this
     /// lane, the pawn included, rests at this height.
+    ///
+    /// Still asked of the lane rather than read out of GameConfig directly,
+    /// so everything that stands on the board keeps going through the row it
+    /// is standing on - and nothing would have to change if a section ever
+    /// needed a height of its own again.
     float GetSurfaceHeight() const;
 
 private:
@@ -53,6 +58,4 @@ private:
     LaneType type;
 
     int row;
-
-    float surfaceHeight;
 };

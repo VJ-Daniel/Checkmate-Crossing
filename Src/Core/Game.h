@@ -3,8 +3,12 @@
 #include <memory>
 #include <vector>
 
+#include "CageMeshFactory.h"
 #include "Camera3D.h"
+#include "CheckpointGate.h"
 #include "ChessPiece.h"
+#include "GateMeshFactory.h"
+#include "KingsCage.h"
 #include "Level.h"
 #include "MeshRenderer.h"
 #include "Obstacle.h"
@@ -53,6 +57,16 @@ public:
 
     ObstacleMeshLibrary& GetObstacleMeshes();
 
+    /// The gate standing on the checkpoint lane, or null when the level has
+    /// no checkpoint in it.
+    CheckpointGate* GetCheckpointGate();
+
+    /// Visual-only final objective and the King standing inside it.
+    /// Both are null when the level has no King's Cage area.
+    KingsCage* GetKingsCage();
+
+    ChessPiece* GetCapturedKing();
+
     SpriteRenderer& GetSpriteRenderer();
 
     //---------------------------------------------------------
@@ -90,6 +104,18 @@ private:
     /// these for real. Nothing else depends on it.
     void BuildShowcase();
 
+    /// Stands one checkpoint gate on the level's checkpoint lane.
+    ///
+    /// Unlike the showcase this is a real placement, not scaffolding: the
+    /// GDD puts a checkpoint there and the gate is what marks it. It is
+    /// past the opening view, so it comes into sight once the pawn can
+    /// walk towards it.
+    void BuildCheckpointGate();
+
+    /// Places the visual-only cage and captive King in the final goal area.
+    /// Gameplay will later decide when its separate door should open.
+    void BuildKingsCage();
+
     /// Fills one evenly spaced row of a showcase, centred on the board.
     /// Returns the ground position for the given slot.
     glm::vec3 GetShowcaseSlot(
@@ -121,6 +147,21 @@ private:
     std::shared_ptr<PieceMeshLibrary> pieceMeshes;
 
     std::shared_ptr<ObstacleMeshLibrary> obstacleMeshes;
+
+    std::shared_ptr<GateMeshLibrary> gateMeshes;
+
+    std::shared_ptr<CageMeshLibrary> cageMeshes;
+
+    /// The checkpoint entrance. Its parts share the library's meshes, so a
+    /// second gate later on costs a handful of transforms and nothing else.
+    std::shared_ptr<CheckpointGate> checkpointGate;
+
+    /// Final visual objective. The King remains a normal ChessPiece rather
+    /// than being baked into the cage, and the door is a separate mesh owned
+    /// by KingsCage so future rescue behavior can rotate it around its hinge.
+    std::shared_ptr<KingsCage> kingsCage;
+
+    std::shared_ptr<ChessPiece> capturedKing;
 
     /// Shared quad and shader for every sprite. Held here so its GL objects
     /// are released in Shutdown, while the context is still alive.

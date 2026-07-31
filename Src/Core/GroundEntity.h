@@ -25,7 +25,11 @@ public:
     void Initialize() override;
 
     /// Stands the entity on a point of ground.
-    void SetGroundPosition(const glm::vec3& groundPosition);
+    ///
+    /// Virtual because an entity made of several meshes - the checkpoint
+    /// gate, and the king's cage after it - has to take its parts with it,
+    /// and every caller places one the same way regardless.
+    virtual void SetGroundPosition(const glm::vec3& groundPosition);
 
     const glm::vec3& GetGroundPosition() const;
 
