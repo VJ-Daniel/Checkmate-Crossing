@@ -22,10 +22,13 @@
     <ClCompile Include="Src\Gameplay\CageMeshFactory.cpp" />
     <ClCompile Include="Src\Gameplay\CheckpointGate.cpp" />
     <ClCompile Include="Src\Gameplay\ChessPiece.cpp" />
+    <ClCompile Include="Src\Gameplay\CollectibleManager.cpp" />
     <ClCompile Include="Src\Gameplay\GateMeshFactory.cpp" />
+    <ClCompile Include="Src\Gameplay\HazardManager.cpp" />
     <ClCompile Include="Src\Gameplay\KingsCage.cpp" />
     <ClCompile Include="Src\Gameplay\Lane.cpp" />
     <ClCompile Include="Src\Gameplay\Level.cpp" />
+    <ClCompile Include="Src\Gameplay\MovingHazard.cpp" />
     <ClCompile Include="Src\Gameplay\Obstacle.cpp" />
     <ClCompile Include="Src\Gameplay\ObstacleMeshFactory.cpp" />
     <ClCompile Include="Src\Gameplay\Pawn.cpp" />
@@ -55,10 +58,13 @@
     <ClInclude Include="Src\Gameplay\CageMeshFactory.h" />
     <ClInclude Include="Src\Gameplay\CheckpointGate.h" />
     <ClInclude Include="Src\Gameplay\ChessPiece.h" />
+    <ClInclude Include="Src\Gameplay\CollectibleManager.h" />
     <ClInclude Include="Src\Gameplay\GateMeshFactory.h" />
+    <ClInclude Include="Src\Gameplay\HazardManager.h" />
     <ClInclude Include="Src\Gameplay\KingsCage.h" />
     <ClInclude Include="Src\Gameplay\Lane.h" />
     <ClInclude Include="Src\Gameplay\Level.h" />
+    <ClInclude Include="Src\Gameplay\MovingHazard.h" />
     <ClInclude Include="Src\Gameplay\Obstacle.h" />
     <ClInclude Include="Src\Gameplay\ObstacleMeshFactory.h" />
     <ClInclude Include="Src\Gameplay\Pawn.h" />

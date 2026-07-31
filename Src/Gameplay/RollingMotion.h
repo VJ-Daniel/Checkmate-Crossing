@@ -37,8 +37,8 @@ enum class RollAxisMode
 /// the rotation back out. Collision bounds stay wherever the eventual physics
 /// code puts them.
 ///
-/// Nothing in the project moves yet, so nothing drives this. It exists so that
-/// when hazards do start moving, the rolling is already correct.
+/// MovingHazard drives this for rolling rocks and logs; collision remains
+/// independent because only the render transform is rotated.
 class RollingMotion
 {
 public:

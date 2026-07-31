@@ -15,7 +15,7 @@ namespace GameConfig
     //---------------------------------------------------------
 
     /// One lane (one row of the battlefield) is one world unit deep.
-    /// The pawn will later move exactly one tile per key press.
+    /// Free movement and level row conversion share this world-space unit.
     constexpr float TileSize = 1.0f;
 
     /// Walkable width of the battlefield, in tiles.
@@ -168,4 +168,37 @@ namespace GameConfig
 
     /// Lifted just clear of the ground so the two surfaces do not z-fight.
     constexpr float ShadowGroundOffset = 0.02f;
+
+    //---------------------------------------------------------
+    // Chess-piece abilities (GDD section 3)
+    //
+    // NOTE(Ayub): the GDD names each ability's effect but not its exact
+    // numbers. Values below are placeholder tuning -- adjust freely.
+    //---------------------------------------------------------
+
+    /// Knight ability: speed multiplier and duration. Queen reuses this
+    /// multiplier while her own ability is active.
+    constexpr float KnightSpeedMultiplier = 1.6f;
+
+    constexpr float KnightAbilityDuration = 5.0f;
+
+    /// Rook ability: the shield is really consumed by absorbing one hit,
+    /// not by running out of time, but it still gets a long timeout so an
+    /// unused shield doesn't linger forever.
+    constexpr float RookShieldDuration = 12.0f;
+
+    /// Queen: combines Knight's speed/immunity with Rook's shield for one
+    /// shorter duration, per the GDD's "combines multiple abilities for a
+    /// short time."
+    constexpr float QueenAbilityDuration = 6.0f;
+
+    /// Bishop: how many nearby hazards its ability removes.
+    constexpr int BishopRemovalCount = 2;
+
+    /// How long a fireball's residual fire patch lingers after impact,
+    /// per the GDD's "leave fire behind that deals continuous damage."
+    constexpr float FireballBurnDuration = 3.0f;
+
+    /// How close the pawn needs to be to a collectible ally to pick it up.
+    constexpr float CollectiblePickupRadius = 0.6f;
 }

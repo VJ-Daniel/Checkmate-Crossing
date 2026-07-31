@@ -360,12 +360,12 @@ namespace ObstacleMeshFactory
 
         case HazardType::RollingLog:
         {
-            // A ten-sided timber whose length runs along Z.
+            // A ten-sided timber whose length runs along X, across its
+            // depth-wise path, so it rolls about its own long axis.
             //
-            // Z, not X, because hazards cross the board along X - the arrow
-            // and the spear both point that way - and a cylinder has to lie
-            // perpendicular to the way it rolls. Along X it would have been
-            // rolling about its own length like a drill.
+            // RollingLog examples move along Z. Keeping the cylinder
+            // perpendicular to travel lets RollingMotion rotate it about X
+            // instead of sliding it along its length.
             //
             // The orientation pays off twice: it also turns one flat circular
             // end towards the camera, which is the only view in which a
@@ -380,7 +380,7 @@ namespace ObstacleMeshFactory
                 radius,
                 length,
                 10,
-                MeshBuilder::CylinderAxis::Z);
+                MeshBuilder::CylinderAxis::X);
 
             // A slightly proud darker ring at each end, so the cut faces read
             // as timber rather than as the ends of a dowel.
@@ -390,21 +390,29 @@ namespace ObstacleMeshFactory
             {
                 builder.AddFacetedCylinder(
                     glm::vec3(
-                        0.0f,
+                        static_cast<float>(end) *
+                            (length * 0.5f - 0.035f),
                         radius,
-                        static_cast<float>(end) * (length * 0.5f - 0.035f)),
+                        0.0f),
                     radius * 1.05f,
                     0.07f,
                     10,
-                    MeshBuilder::CylinderAxis::Z);
+                    MeshBuilder::CylinderAxis::X);
             }
 
             model.height = radius * 2.0f;
-            model.footprintWidth = radius * 2.0f;
-            model.footprintDepth = length;
+            model.footprintWidth = length;
+            model.footprintDepth = radius * 2.0f;
             model.boundingRadius = radius;
             break;
         }
+
+        case HazardType::Fireball:
+        case HazardType::Lightning:
+            // Gameplay support is present, but these visuals are intentionally
+            // deferred to sprites/billboards. Do not manufacture an empty 3D
+            // mesh: a null mesh is the explicit "no visual yet" state.
+            return model;
         }
 
         model.mesh = builder.Build();
@@ -475,7 +483,17 @@ std::shared_ptr<Hazard> ObstacleMeshLibrary::CreateHazard(HazardType type)
         model.footprintDepth);
 
     hazard->SetShadowScale(ObstacleShadowScale);
-    hazard->Initialize();
+
+    if (model.mesh)
+    {
+        hazard->Initialize();
+    }
+    else
+    {
+        // The behavior layer can still move this transform-only anchor, but
+        // no quad or other placeholder visual is created for deferred types.
+        hazard->SetShadowVisible(false);
+    }
 
     return hazard;
 }

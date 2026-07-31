@@ -19,22 +19,26 @@ enum class ObstacleType
     Palisade
 };
 
-/// Moving hazards (GDD section 2), as static models for now.
+/// Moving-hazard identifiers from GDD section 2.
 ///
-/// Each of these will eventually travel along a lane, but nothing here
-/// moves: they exist purely as reusable assets.
+/// Movement lives in MovingHazard, never in this shared taxonomy. Arrow,
+/// Spear, Cannonball, RollingRock and RollingLog currently have reusable 3D
+/// assets. Fireball and Lightning deliberately remain meshless until their
+/// planned sprite/billboard visuals are available.
 enum class HazardType
 {
     Arrow,
     Spear,
     Cannonball,
     RollingRock,
-    RollingLog
+    RollingLog,
+    Fireball,
+    Lightning
 };
 
 constexpr int ObstacleTypeCount = 8;
 
-constexpr int HazardTypeCount = 5;
+constexpr int HazardTypeCount = 7;
 
 ObstacleType ObstacleTypeFromIndex(int index);
 
@@ -75,11 +79,11 @@ private:
     ObstacleType type;
 };
 
-/// The static visual asset for a future moving hazard.
+/// The visual anchor referenced by a MovingHazard.
 ///
 /// Airborne models are authored at flight height, while rolling hazards rest
-/// on the ground. A future gameplay type such as ArrowHazard should reference
-/// this visual instead of adding movement or damage state here.
+/// on the ground. Sprite-deferred hazard types may have no mesh, but still use
+/// this transform-only anchor so movement remains separate from rendering.
 class Hazard : public Obstacle
 {
 public:

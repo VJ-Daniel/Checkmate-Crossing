@@ -52,12 +52,12 @@ public:
     /// has none.
     ///
     /// Anything that belongs at a named point of the level - the checkpoint
-    /// gate now, the king's cage later - asks for its row this way instead
+    /// gate or the king's cage - asks for its row this way instead
     /// of counting the layout by hand and going stale the moment a section
     /// is made longer.
     int FindRowOfType(LaneType type) const;
 
-    /// How far from the centre the pawn may walk, for later clamping.
+    /// How far from the centre the pawn may walk.
     static float GetPlayableHalfWidth();
 
     /// Converts a row index into its world-space Z.

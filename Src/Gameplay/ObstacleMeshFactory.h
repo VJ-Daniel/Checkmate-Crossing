@@ -45,11 +45,8 @@ struct ObstacleModel
     ///
     /// The factory is the only place that knows how big a cannonball or a
     /// log actually is, so it reports it here rather than leaving the number
-    /// to be guessed twice - once by a future circular collision bound, and
-    /// once by RollingMotion, which divides distance by exactly this to work
-    /// out how far the prop has turned.
-    ///
-    /// Nothing consumes it yet; no movement or collision exists.
+    /// to be guessed twice. MovingHazard uses it through RollingMotion now;
+    /// a future circular collision bound can reuse the same value.
     float boundingRadius = 0.0f;
 };
 
@@ -108,6 +105,9 @@ namespace ObstacleMeshFactory
     /// renderer remain type-agnostic.
     ObstacleModel Create(ObstacleType type);
 
+    /// Fireball and Lightning intentionally return a model without a mesh;
+    /// their gameplay identifiers remain available while their future sprite
+    /// visuals stay outside this 3D factory.
     ObstacleModel Create(HazardType type);
 }
 
@@ -129,7 +129,8 @@ public:
     /// Factory: a ready-to-render stationary prop.
     std::shared_ptr<StaticObstacle> CreateObstacle(ObstacleType type);
 
-    /// Factory: a ready-to-render hazard model.
+    /// Factory: a hazard visual anchor. Sprite-deferred types have a transform
+    /// but no mesh or shadow, allowing movement code to remain renderer-free.
     std::shared_ptr<Hazard> CreateHazard(HazardType type);
 
     void Clear();

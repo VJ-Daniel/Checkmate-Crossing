@@ -7,7 +7,9 @@
 #include "Camera3D.h"
 #include "CheckpointGate.h"
 #include "ChessPiece.h"
+#include "CollectibleManager.h"
 #include "GateMeshFactory.h"
+#include "HazardManager.h"
 #include "KingsCage.h"
 #include "Level.h"
 #include "MeshRenderer.h"
@@ -66,6 +68,17 @@ public:
     KingsCage* GetKingsCage();
 
     ChessPiece* GetCapturedKing();
+
+    /// Every active moving hazard (arrows, spears, cannonballs, fireballs,
+    /// rolling rocks/logs, the cow). Kaung's collision system should read
+    /// this every frame; nothing here reacts to the player itself.
+    HazardManager& GetHazardManager();
+
+    /// Every collectible ally waiting to be picked up. Kaung's collision
+    /// system should call Pawn::CollectPiece(...) when the pawn touches
+    /// one; see the note on CollectibleManager::TryCollect for the
+    /// placeholder currently standing in for that.
+    CollectibleManager& GetCollectibleManager();
 
     SpriteRenderer& GetSpriteRenderer();
 
@@ -129,10 +142,20 @@ private:
     /// GameConfig.
     void ConfigureCamera();
 
-    /// Points the camera at the pawn. Called on start-up and every frame,
-    /// so this already behaves as a follow camera: it simply has nothing
-    /// to follow until the pawn can move.
+    /// Points the camera at the pawn on start-up and every frame, producing
+    /// the fixed-angle follow view while the pawn moves through the level.
     void UpdateCamera();
+
+    /// TEMPORARY: spawns examples of the mesh-backed moving hazards so the
+    /// system is visible before level data decides real placement. Fireball
+    /// and Lightning stay unspawned until their deferred visuals exist.
+    /// Delete this method and its call in Initialize once that lands,
+    /// exactly like BuildShowcase above.
+    void SpawnExampleHazards();
+
+    /// TEMPORARY: same idea as SpawnExampleHazards, for the four
+    /// collectible allies. Delete once Liyuu's level data places these.
+    void SpawnExampleCollectibles();
 
     std::shared_ptr<Camera3D> camera;
 
@@ -162,6 +185,10 @@ private:
     std::shared_ptr<KingsCage> kingsCage;
 
     std::shared_ptr<ChessPiece> capturedKing;
+
+    std::shared_ptr<HazardManager> hazardManager;
+
+    std::shared_ptr<CollectibleManager> collectibleManager;
 
     /// Shared quad and shader for every sprite. Held here so its GL objects
     /// are released in Shutdown, while the context is still alive.
