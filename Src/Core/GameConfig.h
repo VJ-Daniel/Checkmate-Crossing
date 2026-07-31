@@ -72,7 +72,7 @@ namespace GameConfig
     /// A lane running along X lands on screen at an angle of
     ///     atan( tan(yaw) * sin(pitch) )
     /// so 24 degrees of yaw tilts the lanes by about 19 degrees.
-    constexpr float CameraYawDegrees = 0.0f;
+    constexpr float CameraYawDegrees = 18.0f;
 
     constexpr float CameraDistance = 15.62f;
 
