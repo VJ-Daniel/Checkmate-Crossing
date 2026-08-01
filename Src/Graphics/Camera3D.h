@@ -16,6 +16,17 @@ enum class ProjectionMode
     Perspective
 };
 
+/// Axis-aligned world-space footprint made where the four corners of an
+/// orthographic viewport look through a horizontal plane. The camera clamp
+/// uses this instead of pretending its target is the edge of what is visible.
+struct CameraGroundBounds
+{
+    float minX = 0.0f;
+    float maxX = 0.0f;
+    float minZ = 0.0f;
+    float maxZ = 0.0f;
+};
+
 /// Fixed-angle world camera for the battlefield.
 ///
 /// The camera is described by the point it looks at (its target) plus an
@@ -97,6 +108,13 @@ public:
     const glm::mat4& GetViewMatrix() const;
 
     const glm::mat4& GetProjectionMatrix() const;
+
+    /// Intersects the four orthographic corner rays with y = groundHeight
+    /// and returns their X/Z bounds. This accounts for viewport aspect,
+    /// orthographic height, pitch, yaw and target height; camera distance
+    /// cancels because orthographic rays are parallel.
+    CameraGroundBounds GetOrthographicGroundBounds(
+        float groundHeight) const;
 
     /// Recomputes both matrices. Called automatically by every setter.
     void Update();

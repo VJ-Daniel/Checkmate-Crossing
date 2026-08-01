@@ -50,6 +50,45 @@ namespace GameConfig
     constexpr float GroundSurface = 0.0f;
 
     //---------------------------------------------------------
+    // Finished outer boundary
+    //---------------------------------------------------------
+
+    /// Clear ground between the playable rectangle and the first decorative
+    /// boundary block. The pawn is constrained by the playable rectangle;
+    /// the blocks begin just outside it and never cover the road.
+    constexpr float BoundaryInnerClearance = 0.25f;
+
+    /// Depth of the dense rock/greenery band outside every map edge. This is
+    /// deliberately wider than a single row: the tilted orthographic camera
+    /// sees several ground units beyond its target, and the finished band is
+    /// the visual envelope used by the camera clamp.
+    constexpr float BoundaryThickness = 4.5f;
+
+    constexpr int BoundaryLayerCount = 5;
+
+    /// Nominal distance between blocks along an edge. Their minimum length
+    /// is larger than this, so the inner silhouette has no direct sight gap.
+    constexpr float BoundaryBlockSpacing = 1.0f;
+
+    constexpr float BoundaryMinHeight = 0.55f;
+    constexpr float BoundaryMaxHeight = 2.15f;
+
+    constexpr float BoundaryMinAlongSize = 1.08f;
+    constexpr float BoundaryMaxAlongSize = 1.34f;
+
+    /// Always wider than the 0.9-unit layer spacing, guaranteeing overlap
+    /// between neighbouring depth rows even before rotation is considered.
+    constexpr float BoundaryMinAcrossSize = 0.94f;
+    constexpr float BoundaryMaxAcrossSize = 1.12f;
+
+    constexpr float BoundaryAlongJitter = 0.035f;
+    constexpr float BoundaryMaxRotationDegrees = 8.0f;
+
+    /// Stable coordinate-hash seed. Boundary variation is identical on
+    /// every launch and independent per edge, layer and block.
+    constexpr unsigned int BoundaryVariationSeed = 20260729u;
+
+    //---------------------------------------------------------
     // Camera
     //
     // The reference game uses an orthographic camera tilted down toward the
@@ -85,6 +124,16 @@ namespace GameConfig
     /// the middle of the screen and leaves the upper two thirds for the road
     /// ahead. The pawn ends up around 65% of the way down the view.
     constexpr float CameraLookAhead = 1.2f;
+
+    /// World-space lock region around the camera target. Movement inside it
+    /// moves the pawn on screen without nudging the camera; crossing an edge
+    /// advances only far enough to put the pawn back on that edge.
+    constexpr float CameraDeadZoneWidth = 2.4f;
+    constexpr float CameraDeadZoneDepth = 1.5f;
+
+    /// Keeps the calculated ground footprint a little inside the nominal
+    /// outer boundary, absorbing floating-point and rasterization slop.
+    constexpr float CameraBoundsInset = 0.12f;
 
     /// Used only when the camera is switched to perspective mode. A narrow
     /// field of view keeps the framing close to the orthographic look.

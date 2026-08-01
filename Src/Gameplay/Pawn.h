@@ -18,8 +18,9 @@ class SceneNode;
 /// The player's chess pawn.
 ///
 /// GDD section 2: free top-down movement (not tile-hopping), clamped to the
-/// playable width, following the ground height of whatever lane the pawn is
-/// currently over, plus a jump for clearing Fence/Rock/Palisade obstacles.
+/// complete playable rectangle, following the ground height of whatever lane
+/// the pawn is currently over, plus a jump for clearing Fence/Rock/Palisade
+/// obstacles.
 /// Collision response (blocking, damage, knockback) is deliberately NOT
 /// handled here -- Ayub owns how the pawn moves, Kaung owns what happens
 /// when it collides with something. This class only exposes the movement
@@ -74,9 +75,9 @@ public:
     /// more tightly than either wants.
     bool IsGrounded() const;
 
-    /// Reads input, moves freely along X/Z, clamps to the playable width,
-    /// follows the terrain height of the pawn's current lane, applies
-    /// jump gravity, and advances any active chess-piece ability.
+    /// Reads input, moves freely along X/Z, resolves the pawn's footprint
+    /// against all four playable edges, follows the terrain height of the
+    /// current lane, applies jump gravity, and advances any active ability.
     void Update(float deltaTime) override;
 
     /// Sets the point on the ground the pawn stands on. The pawn's own

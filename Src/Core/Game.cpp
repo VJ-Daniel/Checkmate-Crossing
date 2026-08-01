@@ -69,6 +69,55 @@ namespace
 
         return horseBodied ? 90.0f : 0.0f;
     }
+
+    /// Moves a camera axis only when the desired focus leaves its lock
+    /// region, and then only enough to put it back on that region's edge.
+    float FollowOutsideDeadZone(
+        float current,
+        float desired,
+        float deadZoneSize)
+    {
+        const float halfZone = std::max(deadZoneSize, 0.0f) * 0.5f;
+
+        if (desired < current - halfZone)
+            return desired + halfZone;
+
+        if (desired > current + halfZone)
+            return desired - halfZone;
+
+        return current;
+    }
+
+    /// Shifts one camera-target axis until its visible footprint fits inside
+    /// the corresponding visual bounds. When an extreme viewport is wider
+    /// than the available envelope, centring is the only unbiased fallback.
+    float FitViewAxis(
+        float target,
+        float viewMinimum,
+        float viewMaximum,
+        float allowedMinimum,
+        float allowedMaximum)
+    {
+        const float viewSpan = viewMaximum - viewMinimum;
+        const float allowedSpan = allowedMaximum - allowedMinimum;
+
+        if (viewSpan >= allowedSpan)
+        {
+            const float viewCenter = (viewMinimum + viewMaximum) * 0.5f;
+            const float allowedCenter =
+                (allowedMinimum + allowedMaximum) * 0.5f;
+
+            return target + allowedCenter - viewCenter;
+        }
+
+        if (viewMinimum < allowedMinimum)
+            return target + allowedMinimum - viewMinimum;
+
+        if (viewMaximum > allowedMaximum)
+            return target - (viewMaximum - allowedMaximum);
+
+        return target;
+    }
 }
 
 Game::Game()
@@ -85,6 +134,8 @@ bool Game::Initialize(
     float screenWidth,
     float screenHeight)
 {
+    cameraFollowInitialized = false;
+
     camera = std::make_shared<Camera3D>(
         screenWidth,
         screenHeight);
@@ -554,15 +605,75 @@ void Game::UpdateCamera()
     if (!camera || !pawn)
         return;
 
-    // Aim a little past the pawn so slightly more of the road ahead is
-    // visible than the ground already crossed.
-    const glm::vec3 lookAhead(
-        0.0f,
-        0.0f,
-        -GameConfig::CameraLookAhead);
+    const glm::vec3& pawnPosition =
+        pawn->GetTransform().GetPosition();
 
-    camera->SetTarget(
-        pawn->GetTransform().GetPosition() + lookAhead);
+    // X/Z follows gameplay progression; Y follows the ground-centred pawn
+    // rather than its jump offset. A jump inside the lock space therefore
+    // moves visibly through the frame instead of lifting the whole camera,
+    // and the ground-footprint clamp remains stable throughout the arc.
+    const glm::vec3 desiredTarget(
+        pawnPosition.x,
+        pawnPosition.y - pawn->GetJumpHeight(),
+        pawnPosition.z - GameConfig::CameraLookAhead);
+
+    glm::vec3 nextTarget;
+
+    if (!cameraFollowInitialized)
+    {
+        nextTarget = desiredTarget;
+        cameraFollowInitialized = true;
+    }
+    else
+    {
+        nextTarget = camera->GetTarget();
+        nextTarget.y = desiredTarget.y;
+
+        nextTarget.x = FollowOutsideDeadZone(
+            nextTarget.x,
+            desiredTarget.x,
+            GameConfig::CameraDeadZoneWidth);
+
+        nextTarget.z = FollowOutsideDeadZone(
+            nextTarget.z,
+            desiredTarget.z,
+            GameConfig::CameraDeadZoneDepth);
+    }
+
+    // Calculate what the camera actually sees, not just where its target is.
+    // Setting the candidate first lets Camera3D account for target height in
+    // the four corner-ray intersections.
+    camera->SetTarget(nextTarget);
+
+    if (level &&
+        camera->GetProjectionMode() == ProjectionMode::Orthographic)
+    {
+        LevelBoundsXZ visualBounds = level->GetBoundaryVisualBounds();
+
+        visualBounds.minX += GameConfig::CameraBoundsInset;
+        visualBounds.maxX -= GameConfig::CameraBoundsInset;
+        visualBounds.minZ += GameConfig::CameraBoundsInset;
+        visualBounds.maxZ -= GameConfig::CameraBoundsInset;
+
+        const CameraGroundBounds viewBounds =
+            camera->GetOrthographicGroundBounds(GameConfig::GroundSurface);
+
+        nextTarget.x = FitViewAxis(
+            nextTarget.x,
+            viewBounds.minX,
+            viewBounds.maxX,
+            visualBounds.minX,
+            visualBounds.maxX);
+
+        nextTarget.z = FitViewAxis(
+            nextTarget.z,
+            viewBounds.minZ,
+            viewBounds.maxZ,
+            visualBounds.minZ,
+            visualBounds.maxZ);
+
+        camera->SetTarget(nextTarget);
+    }
 }
 
 bool Game::TryInteractWithCheckpointGate(const glm::vec3& pawnPosition)
@@ -922,6 +1033,10 @@ void Game::SetViewportSize(float width, float height)
 
     if (spriteRenderer)
         spriteRenderer->SetScreenSize(width, height);
+
+    // Aspect ratio changes the orthographic ground footprint, so the target
+    // must be re-fitted immediately rather than waiting for player movement.
+    UpdateCamera();
 }
 
 void Game::Shutdown()
@@ -968,6 +1083,7 @@ void Game::Shutdown()
     renderer.reset();
 
     camera.reset();
+    cameraFollowInitialized = false;
 
     ResourceManager::Shutdown();
 }

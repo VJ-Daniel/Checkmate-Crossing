@@ -148,8 +148,10 @@ private:
     /// GameConfig.
     void ConfigureCamera();
 
-    /// Points the camera at the pawn on start-up and every frame, producing
-    /// the fixed-angle follow view while the pawn moves through the level.
+    /// Advances the fixed-angle camera only when the pawn crosses its X/Z
+    /// dead zone, then clamps the visible ground footprint to the finished
+    /// boundary envelope. Jump height is intentionally visual, not camera
+    /// motion, so a jump inside the lock space leaves the camera still.
     void UpdateCamera();
 
     /// TEMPORARY: spawns examples of the mesh-backed moving hazards so the
@@ -192,6 +194,9 @@ private:
     void UpdateDoors(float deltaTime);
 
     std::shared_ptr<Camera3D> camera;
+
+    /// Distinguishes the first exact placement from later dead-zone updates.
+    bool cameraFollowInitialized = false;
 
     std::shared_ptr<MeshRenderer> renderer;
 

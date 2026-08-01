@@ -178,6 +178,64 @@ const glm::mat4& Camera3D::GetProjectionMatrix() const
     return projection;
 }
 
+CameraGroundBounds Camera3D::GetOrthographicGroundBounds(
+    float groundHeight) const
+{
+    CameraGroundBounds bounds;
+
+    const float aspect = (screenWidth > 0.0f && screenHeight > 0.0f)
+        ? (screenWidth / screenHeight)
+        : 1.0f;
+
+    const float halfHeight = orthographicHeight * 0.5f;
+    const float halfWidth = halfHeight * aspect;
+
+    const glm::vec3 forward = glm::normalize(target - GetPosition());
+    const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+    const glm::vec3 right = glm::normalize(glm::cross(forward, worldUp));
+    const glm::vec3 cameraUp = glm::normalize(glm::cross(right, forward));
+
+    bool firstCorner = true;
+
+    for (int horizontalSide = -1;
+        horizontalSide <= 1;
+        horizontalSide += 2)
+    {
+        for (int verticalSide = -1;
+            verticalSide <= 1;
+            verticalSide += 2)
+        {
+            const glm::vec3 corner =
+                target +
+                right * (halfWidth * static_cast<float>(horizontalSide)) +
+                cameraUp * (halfHeight * static_cast<float>(verticalSide));
+
+            // Pitch is clamped away from zero, so forward.y is safely
+            // non-zero. All orthographic corner rays share this direction.
+            const float distanceToGround =
+                (groundHeight - corner.y) / forward.y;
+
+            const glm::vec3 groundPoint =
+                corner + forward * distanceToGround;
+
+            if (firstCorner)
+            {
+                bounds.minX = bounds.maxX = groundPoint.x;
+                bounds.minZ = bounds.maxZ = groundPoint.z;
+                firstCorner = false;
+                continue;
+            }
+
+            bounds.minX = std::min(bounds.minX, groundPoint.x);
+            bounds.maxX = std::max(bounds.maxX, groundPoint.x);
+            bounds.minZ = std::min(bounds.minZ, groundPoint.z);
+            bounds.maxZ = std::max(bounds.maxZ, groundPoint.z);
+        }
+    }
+
+    return bounds;
+}
+
 void Camera3D::Update()
 {
     UpdateProjection();
@@ -186,7 +244,7 @@ void Camera3D::Update()
 
 void Camera3D::UpdateProjection()
 {
-    const float aspect = (screenHeight > 0.0f)
+    const float aspect = (screenWidth > 0.0f && screenHeight > 0.0f)
         ? (screenWidth / screenHeight)
         : 1.0f;
 

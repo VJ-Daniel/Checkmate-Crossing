@@ -105,13 +105,40 @@ void Pawn::Update(float deltaTime)
     glm::vec3 position = transform.GetPosition();
     position += velocity * deltaTime;
 
-    // Z is intentionally left unclamped here: the pawn is free to walk the
-    // full length of the level, including back toward the start. Kaung's
-    // checkpoint/respawn logic is the right place to prevent backtracking
-    // past a cleared checkpoint, if that turns out to be desired -- it
-    // isn't a movement concern.
-    const float halfWidth = Level::GetPlayableHalfWidth();
-    position.x = glm::clamp(position.x, -halfWidth, halfWidth);
+    // Resolve the complete X/Z footprint against one continuous playable
+    // rectangle. This is equivalent to four gapless boundary colliders, but
+    // uses the clamp already owned by movement instead of adding inert
+    // collider objects to a project that has no generic resolver yet.
+    //
+    // Y is untouched, so jumping cannot hop over a boundary and the jump arc
+    // never gets flattened by horizontal collision response.
+    if (level)
+    {
+        const float halfFootprint = GameConfig::PawnWidth * 0.5f;
+        const glm::vec3 resolved = level->ClampToPlayableBounds(
+            position,
+            halfFootprint,
+            halfFootprint);
+
+        // Remove only the velocity normal to a wall. Diagonal movement keeps
+        // its tangent component and slides naturally along sides/corners.
+        if (resolved.x != position.x)
+            velocity.x = 0.0f;
+
+        if (resolved.z != position.z)
+            velocity.z = 0.0f;
+
+        position = resolved;
+    }
+    else
+    {
+        // Pawn is normally attached to a Level before its first Update, but
+        // retain a safe width clamp for isolated tests or placeholder use.
+        const float halfWidth =
+            Level::GetPlayableHalfWidth() - GameConfig::PawnWidth * 0.5f;
+
+        position.x = glm::clamp(position.x, -halfWidth, halfWidth);
+    }
 
     transform.SetPosition(position);
 

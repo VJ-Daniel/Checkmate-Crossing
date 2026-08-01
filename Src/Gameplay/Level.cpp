@@ -12,39 +12,94 @@
 
 #include "Level.h"
 
-#include <random>
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
 
 #include "GameConfig.h"
 
 namespace
 {
-    /// Scenery is kept clear of the walkable board but inside the narrow
-    /// band the camera can actually see.
-    ///
-    /// The yaw makes this band tighter than it looks: moving along +X also
-    /// moves a point down the screen, so a block has to satisfy the left or
-    /// right screen edge and the top or bottom edge at once. Solving both
-    /// leaves roughly |x| between 4.6 and 6.4 - anything further out never
-    /// appears on screen at all.
-    constexpr float DecorationMinX = 4.8f;
-    constexpr float DecorationMaxX = 6.8f;
+    enum class BoundaryEdge : std::uint32_t
+    {
+        Left,
+        Right,
+        Start,
+        End
+    };
 
-    /// Every row gets scenery. Only a fraction of it lands inside the view
-    /// at any one time, so spacing it out leaves the borders looking bare.
-    constexpr int DecorationRowStep = 1;
+    /// Six subdued stone/foliage shades. Vertex colour keeps the shared cube
+    /// mesh cheap while making the perimeter read as mixed rock and greenery
+    /// rather than a repeated single-colour wall.
+    const std::array<glm::vec3, 6> BoundaryPalette =
+    {
+        glm::vec3(0.28f, 0.29f, 0.31f),
+        glm::vec3(0.37f, 0.38f, 0.40f),
+        glm::vec3(0.46f, 0.47f, 0.48f),
+        glm::vec3(0.13f, 0.29f, 0.16f),
+        glm::vec3(0.18f, 0.37f, 0.19f),
+        glm::vec3(0.25f, 0.43f, 0.23f)
+    };
 
-    /// Blocks per row per side, spread across the band above. Any single
-    /// x value only clears both screen edges for a row or two, so the band
-    /// has to be filled across its width rather than sampled once.
-    constexpr int DecorationsPerSide = 3;
+    /// Small integer hash used instead of stateful randomness. A block's
+    /// appearance depends only on its edge/layer/index coordinate, so adding
+    /// another strip later cannot reshuffle the perimeter that already exists.
+    std::uint32_t MixBoundaryHash(std::uint32_t value)
+    {
+        value ^= value >> 16;
+        value *= 0x7feb352du;
+        value ^= value >> 15;
+        value *= 0x846ca68bu;
+        value ^= value >> 16;
+        return value;
+    }
 
-    /// Chance a given slot is left empty, so the border reads as scattered
-    /// scenery instead of a solid hedge.
-    constexpr float DecorationSkipChance = 0.3f;
+    float BoundaryValue(
+        BoundaryEdge edge,
+        int layer,
+        int index,
+        std::uint32_t channel)
+    {
+        std::uint32_t key = GameConfig::BoundaryVariationSeed;
+        key ^= (static_cast<std::uint32_t>(edge) + 1u) * 0x9e3779b9u;
+        key ^= (static_cast<std::uint32_t>(layer) + 1u) * 0x85ebca6bu;
+        key ^= (static_cast<std::uint32_t>(index) + 1u) * 0xc2b2ae35u;
+        key ^= (channel + 1u) * 0x27d4eb2fu;
 
-    /// Fixed seed: the level looks identical every run, which matters while
-    /// tuning the camera.
-    constexpr unsigned int DecorationSeed = 20260729u;
+        return static_cast<float>(MixBoundaryHash(key) & 0x00ffffffu) /
+            static_cast<float>(0x01000000u);
+    }
+
+    float BoundaryRange(
+        BoundaryEdge edge,
+        int layer,
+        int index,
+        std::uint32_t channel,
+        float minimum,
+        float maximum)
+    {
+        return minimum +
+            (maximum - minimum) *
+            BoundaryValue(edge, layer, index, channel);
+    }
+
+    float ClampAxisToFootprint(
+        float value,
+        float minimum,
+        float maximum,
+        float halfExtent)
+    {
+        const float insetMinimum = minimum + std::max(halfExtent, 0.0f);
+        const float insetMaximum = maximum - std::max(halfExtent, 0.0f);
+
+        // An oversized object cannot fit on this axis. Centring it is the
+        // only stable answer and avoids handing std::clamp inverted bounds.
+        if (insetMinimum > insetMaximum)
+            return (minimum + maximum) * 0.5f;
+
+        return std::clamp(value, insetMinimum, insetMaximum);
+    }
 
     /// One continuous grass palette for the whole battlefield.
     ///
@@ -58,18 +113,6 @@ namespace
             : glm::vec3(0.245f, 0.48f, 0.22f);
     }
 
-    /// Two families of scenery: dark green woodland and grey battlefield
-    /// stone, so the border has some variety without needing textures.
-    glm::vec3 DecorationColor(int variant)
-    {
-        switch (variant)
-        {
-        case 0:  return glm::vec3(0.16f, 0.34f, 0.17f);
-        case 1:  return glm::vec3(0.20f, 0.42f, 0.21f);
-        case 2:  return glm::vec3(0.38f, 0.38f, 0.40f);
-        default: return glm::vec3(0.30f, 0.30f, 0.32f);
-        }
-    }
 }
 
 Level::Level()
@@ -175,63 +218,241 @@ void Level::AddLanes(LaneType type, int count)
 
 void Level::BuildDecorations()
 {
-    std::mt19937 random(DecorationSeed);
+    if (!blockMesh || lanes.empty())
+        return;
 
-    std::uniform_real_distribution<float> heightRange(0.5f, 2.2f);
-    std::uniform_real_distribution<float> widthRange(0.55f, 0.95f);
-    std::uniform_real_distribution<float> jitterRange(-0.32f, 0.32f);
-    std::uniform_real_distribution<float> chanceRange(0.0f, 1.0f);
-    std::uniform_int_distribution<int> variantRange(0, 3);
+    const LevelBoundsXZ playable = GetPlayableBounds();
+    const LevelBoundsXZ visual = GetBoundaryVisualBounds();
 
-    // Width of one slot in the band, so the blocks spread evenly across it.
-    const float slotWidth =
-        (DecorationMaxX - DecorationMinX) / DecorationsPerSide;
+    const float layerSpacing =
+        GameConfig::BoundaryThickness /
+        static_cast<float>(GameConfig::BoundaryLayerCount);
 
-    for (std::size_t index = 0; index < lanes.size();
-        index += DecorationRowStep)
-    {
-        const auto& lane = lanes[index];
-
-        if (!lane)
-            continue;
-
-        // Scenery on both sides of the board, so the border reads from
-        // both screen edges no matter how the camera is yawed.
-        for (int side = -1; side <= 1; side += 2)
+    /// Builds one edge as overlapping rows of independently varied blocks.
+    /// No slot is skipped: variation comes from form and colour while the
+    /// staggered layers keep the outer world hidden through every corner.
+    const auto buildStrip =
+        [this, layerSpacing](
+            BoundaryEdge edge,
+            bool runsAlongX,
+            float innerCoordinate,
+            float outwardSign,
+            float tangentMinimum,
+            float tangentMaximum)
         {
-            for (int slot = 0; slot < DecorationsPerSide; ++slot)
+            const float span = tangentMaximum - tangentMinimum;
+            const int segmentCount = std::max(
+                1,
+                static_cast<int>(std::ceil(
+                    span / GameConfig::BoundaryBlockSpacing)));
+
+            const float segmentSpacing =
+                span / static_cast<float>(segmentCount);
+
+            for (int layer = 0;
+                layer < GameConfig::BoundaryLayerCount;
+                ++layer)
             {
-                if (chanceRange(random) < DecorationSkipChance)
-                    continue;
+                int previousPaletteIndex = -1;
+                const bool isStaggeredLayer = (layer & 1) != 0;
+                const int layerSegmentCount =
+                    segmentCount + (isStaggeredLayer ? 1 : 0);
 
-                auto block = std::make_shared<WorldObject>();
+                for (int index = 0; index < layerSegmentCount; ++index)
+                {
+                    float tangent = isStaggeredLayer
+                        ? tangentMinimum +
+                            static_cast<float>(index) * segmentSpacing
+                        : tangentMinimum +
+                            (static_cast<float>(index) + 0.5f) * segmentSpacing;
 
-                block->SetMesh(blockMesh);
+                    // Odd layers explicitly anchor both endpoints; their
+                    // interior blocks and every even-layer block keep a small
+                    // deterministic jitter. This staggers the seams without
+                    // wrapping an endpoint away from a corner.
+                    const bool isAnchoredEndpoint =
+                        isStaggeredLayer &&
+                        (index == 0 || index == layerSegmentCount - 1);
 
-                const float width = widthRange(random);
-                const float height = heightRange(random);
+                    if (!isAnchoredEndpoint)
+                    {
+                        tangent += BoundaryRange(
+                            edge,
+                            layer,
+                            index,
+                            0u,
+                            -GameConfig::BoundaryAlongJitter,
+                            GameConfig::BoundaryAlongJitter);
+                    }
 
-                block->GetTransform().SetScale(width, height, width);
+                    const float across =
+                        innerCoordinate +
+                        outwardSign *
+                        (static_cast<float>(layer) + 0.5f) * layerSpacing;
 
-                const float offset =
-                    DecorationMinX +
-                    slotWidth * (static_cast<float>(slot) + 0.5f) +
-                    jitterRange(random);
+                    const float alongSize = BoundaryRange(
+                        edge,
+                        layer,
+                        index,
+                        1u,
+                        GameConfig::BoundaryMinAlongSize,
+                        GameConfig::BoundaryMaxAlongSize);
 
-                block->GetTransform().SetPosition(
-                    static_cast<float>(side) * offset,
-                    lane->GetSurfaceHeight() + height * 0.5f,
-                    lane->GetCenterZ() + jitterRange(random));
+                    float acrossSize = BoundaryRange(
+                        edge,
+                        layer,
+                        index,
+                        2u,
+                        GameConfig::BoundaryMinAcrossSize,
+                        GameConfig::BoundaryMaxAcrossSize);
 
-                block->SetColor(
-                    glm::vec4(DecorationColor(variantRange(random)), 1.0f));
+                    // Lane meshes end exactly at the start/end Z limits. Make
+                    // each cap's innermost row bridge the visual clearance so
+                    // no background-colour trench can show between floor and
+                    // boundary, while retaining a little overlap with row two.
+                    const bool isCap =
+                        edge == BoundaryEdge::Start ||
+                        edge == BoundaryEdge::End;
 
-                block->Initialize();
+                    if (isCap && layer == 0)
+                    {
+                        acrossSize = std::max(
+                            acrossSize,
+                            layerSpacing +
+                                GameConfig::BoundaryInnerClearance * 2.0f);
+                    }
 
-                decorations.push_back(block);
+                    const float layerProgress =
+                        (GameConfig::BoundaryLayerCount > 1)
+                        ? static_cast<float>(layer) /
+                            static_cast<float>(
+                                GameConfig::BoundaryLayerCount - 1)
+                        : 1.0f;
+
+                    // Low rocks/bushes line the playable edge so the pawn
+                    // stays readable when pressing into a camera-facing
+                    // wall. Height rises irregularly into the outer layers,
+                    // where tall blocks hide the world beyond the map.
+                    const float layerMaximumHeight =
+                        GameConfig::BoundaryMinHeight +
+                        (GameConfig::BoundaryMaxHeight -
+                            GameConfig::BoundaryMinHeight) *
+                        (0.15f + layerProgress * 0.85f);
+
+                    float height = BoundaryRange(
+                        edge,
+                        layer,
+                        index,
+                        3u,
+                        GameConfig::BoundaryMinHeight,
+                        layerMaximumHeight);
+
+                    // The end strip remains solid behind the cage, but its
+                    // centre stays low enough to frame rather than hide the
+                    // King. Taller stone and greenery remain to either side.
+                    if (edge == BoundaryEdge::End && std::fabs(tangent) < 1.4f)
+                    {
+                        height = std::min(
+                            height,
+                            0.82f + static_cast<float>(layer) * 0.10f);
+                    }
+
+                    int paletteIndex = static_cast<int>(BoundaryValue(
+                        edge,
+                        layer,
+                        index,
+                        4u) * static_cast<float>(BoundaryPalette.size()));
+
+                    paletteIndex = std::min(
+                        paletteIndex,
+                        static_cast<int>(BoundaryPalette.size()) - 1);
+
+                    if (paletteIndex == previousPaletteIndex)
+                    {
+                        paletteIndex =
+                            (paletteIndex + 1 + layer) %
+                            static_cast<int>(BoundaryPalette.size());
+                    }
+
+                    previousPaletteIndex = paletteIndex;
+
+                    float rotation = BoundaryRange(
+                        edge,
+                        layer,
+                        index,
+                        5u,
+                        -GameConfig::BoundaryMaxRotationDegrees,
+                        GameConfig::BoundaryMaxRotationDegrees);
+
+                    // The enlarged inner cap row meets the floor exactly.
+                    // Rotating those blocks would project their long axis a
+                    // little onto Z and visibly intrude into the playable
+                    // rectangle; the remaining rows retain varied rotation.
+                    if (isCap && layer == 0)
+                        rotation = 0.0f;
+
+                    auto block = std::make_shared<WorldObject>();
+                    block->SetMesh(blockMesh);
+                    block->SetColor(glm::vec4(
+                        BoundaryPalette[paletteIndex],
+                        1.0f));
+
+                    block->GetTransform().SetScale(
+                        runsAlongX ? alongSize : acrossSize,
+                        height,
+                        runsAlongX ? acrossSize : alongSize);
+
+                    block->GetTransform().SetPosition(
+                        runsAlongX ? tangent : across,
+                        GameConfig::GroundSurface + height * 0.5f,
+                        runsAlongX ? across : tangent);
+
+                    block->GetTransform().SetRotation(
+                        0.0f,
+                        rotation,
+                        0.0f);
+
+                    block->Initialize();
+                    decorations.push_back(block);
+                }
             }
-        }
-    }
+        };
+
+    const float clearance = GameConfig::BoundaryInnerClearance;
+
+    // The caps own the four corner bands. Long sides end at each cap's inner
+    // coordinate, avoiding duplicate blocks while preserving overlap there.
+    buildStrip(
+        BoundaryEdge::Left,
+        false,
+        playable.minX - clearance,
+        -1.0f,
+        playable.minZ - clearance,
+        playable.maxZ + clearance);
+
+    buildStrip(
+        BoundaryEdge::Right,
+        false,
+        playable.maxX + clearance,
+        1.0f,
+        playable.minZ - clearance,
+        playable.maxZ + clearance);
+
+    buildStrip(
+        BoundaryEdge::Start,
+        true,
+        playable.maxZ + clearance,
+        1.0f,
+        visual.minX,
+        visual.maxX);
+
+    buildStrip(
+        BoundaryEdge::End,
+        true,
+        playable.minZ - clearance,
+        -1.0f,
+        visual.minX,
+        visual.maxX);
 }
 
 void Level::Update(float deltaTime)
@@ -275,6 +496,64 @@ int Level::FindRowOfType(LaneType type) const
     }
 
     return -1;
+}
+
+LevelBoundsXZ Level::GetPlayableBounds() const
+{
+    LevelBoundsXZ bounds;
+
+    bounds.minX = -GetPlayableHalfWidth();
+    bounds.maxX = GetPlayableHalfWidth();
+
+    if (lanes.empty())
+        return bounds;
+
+    const float halfTile = GameConfig::TileSize * 0.5f;
+
+    bounds.maxZ = lanes.front()->GetCenterZ() + halfTile;
+    bounds.minZ = lanes.back()->GetCenterZ() - halfTile;
+
+    return bounds;
+}
+
+LevelBoundsXZ Level::GetBoundaryVisualBounds() const
+{
+    LevelBoundsXZ bounds = GetPlayableBounds();
+
+    const float expansion =
+        GameConfig::BoundaryInnerClearance +
+        GameConfig::BoundaryThickness;
+
+    bounds.minX -= expansion;
+    bounds.maxX += expansion;
+    bounds.minZ -= expansion;
+    bounds.maxZ += expansion;
+
+    return bounds;
+}
+
+glm::vec3 Level::ClampToPlayableBounds(
+    const glm::vec3& position,
+    float halfWidth,
+    float halfDepth) const
+{
+    const LevelBoundsXZ bounds = GetPlayableBounds();
+
+    glm::vec3 resolved = position;
+
+    resolved.x = ClampAxisToFootprint(
+        resolved.x,
+        bounds.minX,
+        bounds.maxX,
+        halfWidth);
+
+    resolved.z = ClampAxisToFootprint(
+        resolved.z,
+        bounds.minZ,
+        bounds.maxZ,
+        halfDepth);
+
+    return resolved;
 }
 
 glm::vec3 Level::GetPlayerSpawnPosition() const
