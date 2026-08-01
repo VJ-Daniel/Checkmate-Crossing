@@ -4,7 +4,10 @@
 
     The player's piece: free top-down movement (GDD section 2), clamped
     to the playable width and following the terrain height of whatever
-    lane it currently stands over.
+    lane it currently stands over, plus a jump (Space) for clearing
+    Fence/Rock/Palisade and an interact button (E) whose actual target
+    (door, gate, or falling back to the banked ability) is resolved by
+    whoever owns both the pawn and those objects -- currently Game.
 
     Collision response (blocking, damage, knockback) is out of scope
     here by design -- see Pawn.h for the ownership split with Kaung's
@@ -79,6 +82,8 @@ void Pawn::Update(float deltaTime)
 {
     HandleInput();
 
+    UpdateJump(deltaTime);
+
     UpdateAbility(deltaTime);
 
     glm::vec3 position = transform.GetPosition();
@@ -121,9 +126,20 @@ void Pawn::HandleInput()
     const bool spaceDown = Input::IsKeyPressed(Key::Space);
 
     if (spaceDown && !spaceKeyWasDown)
-        TryActivateAbility();
+        TryJump();
 
     spaceKeyWasDown = spaceDown;
+
+    // E is the interact button. What it actually does -- open a nearby
+    // door/gate, or fall back to activating a stored ability -- depends on
+    // the wider level, which this class has no reference to. It just
+    // reports the press; see the class comment on ConsumeInteractPulse().
+    const bool interactDown = Input::IsKeyPressed(Key::E);
+
+    if (interactDown && !interactKeyWasDown)
+        interactPulsePending = true;
+
+    interactKeyWasDown = interactDown;
 }
 
 void Pawn::ApplyTerrainHeight()
@@ -146,9 +162,55 @@ void Pawn::ApplyTerrainHeight()
     groundHeight = lane->GetSurfaceHeight();
 
     glm::vec3 adjusted = position;
-    adjusted.y = groundHeight + GameConfig::PawnHeight * 0.5f;
+    adjusted.y = groundHeight + GameConfig::PawnHeight * 0.5f + jumpHeight;
 
     transform.SetPosition(adjusted);
+}
+
+void Pawn::TryJump()
+{
+    // Only from the ground -- no double-jumping, and a jump started mid-
+    // jump would just reset the arc rather than adding to it.
+    if (isAirborne)
+        return;
+
+    isAirborne = true;
+    jumpVerticalVelocity = GameConfig::JumpInitialVelocity;
+}
+
+void Pawn::UpdateJump(float deltaTime)
+{
+    if (!isAirborne)
+        return;
+
+    jumpVerticalVelocity -= GameConfig::JumpGravity * deltaTime;
+    jumpHeight += jumpVerticalVelocity * deltaTime;
+
+    if (jumpHeight <= 0.0f)
+    {
+        jumpHeight = 0.0f;
+        jumpVerticalVelocity = 0.0f;
+        isAirborne = false;
+    }
+}
+
+bool Pawn::IsAirborne() const
+{
+    return isAirborne;
+}
+
+float Pawn::GetJumpHeight() const
+{
+    return jumpHeight;
+}
+
+bool Pawn::ConsumeInteractPulse()
+{
+    if (!interactPulsePending)
+        return false;
+
+    interactPulsePending = false;
+    return true;
 }
 
 void Pawn::CollectPiece(PieceType type)
@@ -350,6 +412,13 @@ void Pawn::Respawn()
     // on its own origin, so lifting it by half its height rests its base
     // exactly on that surface.
     groundHeight = spawnPosition.y;
+
+    // Clears any jump in progress -- respawning mid-air (e.g. after a hit
+    // while jumping a Palisade) should land the pawn cleanly, not carry
+    // the old arc's velocity into the new position.
+    isAirborne = false;
+    jumpHeight = 0.0f;
+    jumpVerticalVelocity = 0.0f;
 
     transform.SetPosition(
         spawnPosition.x,

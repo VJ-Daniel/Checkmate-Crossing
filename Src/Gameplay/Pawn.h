@@ -12,16 +12,23 @@ class Level;
 ///
 /// GDD section 2: free top-down movement (not tile-hopping), clamped to the
 /// playable width, following the ground height of whatever lane the pawn is
-/// currently over. Collision response (blocking, damage, knockback) is
-/// deliberately NOT handled here -- Ayub owns how the pawn moves, Kaung owns
-/// what happens when it collides with something. This class only exposes
-/// the movement state (velocity, current row) those other systems need.
+/// currently over, plus a jump for clearing Fence/Rock/Palisade obstacles.
+/// Collision response (blocking, damage, knockback) is deliberately NOT
+/// handled here -- Ayub owns how the pawn moves, Kaung owns what happens
+/// when it collides with something. This class only exposes the movement
+/// state (velocity, current row, IsAirborne) those other systems need.
 ///
 /// GDD section 3: also owns the collectible chess-piece ability loop --
-/// banking a collected ally, activating it on Space, and the resulting
-/// speed/immunity/shield effects. As with movement, this class only
-/// exposes the resulting state (IsImmuneToHazards, HasShield, ...); it is
-/// Kaung's collision response that should actually read and act on it.
+/// banking a collected ally and the resulting speed/immunity/shield
+/// effects. As with movement, this class only exposes the resulting state
+/// (IsImmuneToHazards, HasShield, ...); it is Kaung's collision response
+/// that should actually read and act on it.
+///
+/// Controls: Space jumps, E interacts. E is context-sensitive and not
+/// fully resolved here -- ConsumeInteractPulse() reports "E was pressed"
+/// for whoever owns both the pawn and the interactable world (currently
+/// Game) to resolve against nearby doors/gates; TryActivateAbility() is
+/// the fallback that same code should call when nothing else was in range.
 class Pawn : public WorldObject
 {
 public:
@@ -32,8 +39,8 @@ public:
     void Initialize() override;
 
     /// Reads input, moves freely along X/Z, clamps to the playable width,
-    /// follows the terrain height of the pawn's current lane, and advances
-    /// any active chess-piece ability.
+    /// follows the terrain height of the pawn's current lane, applies
+    /// jump gravity, and advances any active chess-piece ability.
     void Update(float deltaTime) override;
 
     /// Sets the point on the ground the pawn stands on. The pawn's own
@@ -72,20 +79,53 @@ public:
     const WorldObject& GetShadow() const;
 
     //-----------------------------------------------------------
+    // Jumping (GDD section 4: Fence/Rock/Palisade "can be jumped over")
+    //-----------------------------------------------------------
+
+    /// True from the moment Space leaves the ground until the pawn lands.
+    /// Kaung's collision response should read this to decide whether a
+    /// Fence/Rock/Palisade blocks the pawn or is being jumped over (and,
+    /// for Palisade specifically, whether the "jumping over it damages the
+    /// player" case applies).
+    bool IsAirborne() const;
+
+    /// Height currently added on top of the terrain by the jump, in world
+    /// units. Zero while grounded. Purely a movement/visual number -- not
+    /// a substitute for whatever height threshold Kaung's collision uses
+    /// to decide a jump cleared something.
+    float GetJumpHeight() const;
+
+    //-----------------------------------------------------------
+    // Interaction (E)
+    //-----------------------------------------------------------
+
+    /// True exactly once, on the frame E is pressed, then clears itself.
+    /// Interaction targets (doors, gates, switches, ...) are part of the
+    /// wider level, which this class deliberately has no reference to --
+    /// whoever owns both the pawn and those objects (currently Game)
+    /// should check this every frame, resolve it against anything nearby,
+    /// and call TryActivateAbility() itself if nothing was in range.
+    bool ConsumeInteractPulse();
+
+    //-----------------------------------------------------------
     // Chess-piece abilities (GDD section 3)
     //-----------------------------------------------------------
 
     /// Called when the pawn touches a collectible ally on the field.
     /// Only Bishop/Knight/Rook/Queen are meaningful here; anything else
     /// is ignored. Replaces whatever was previously banked (only one
-    /// stored ability at a time, per the GDD's "Space: activate stored
-    /// chess ability, if available").
+    /// stored ability at a time).
     void CollectPiece(PieceType type);
 
     bool HasStoredPiece() const;
 
     /// Only meaningful when HasStoredPiece() is true.
     PieceType GetStoredPieceType() const;
+
+    /// Consumes the stored piece (if any) and starts its effect. Public
+    /// because it's no longer fired directly off a key press -- see the
+    /// class comment on ConsumeInteractPulse() for who calls this and when.
+    void TryActivateAbility();
 
     /// True while a timed ability (Knight/Rook/Queen) is currently in
     /// effect. Bishop has no ongoing state -- see
@@ -124,16 +164,20 @@ private:
 
     /// Turns WASD/arrow input into a normalized move direction and applies
     /// it as velocity (scaled by any active speed ability); also faces the
-    /// pawn toward its movement direction and checks for an ability
-    /// activation key press.
+    /// pawn toward its movement direction and checks for a jump or an
+    /// interact key press.
     void HandleInput();
 
     /// Snaps the pawn's Y to the surface height of whichever lane its
-    /// current Z falls over, so raised/sunken lanes read as real steps.
+    /// current Z falls over, plus the current jump offset, so raised/
+    /// sunken lanes read as real steps and a jump lifts cleanly off them.
     void ApplyTerrainHeight();
 
-    /// Consumes the stored piece (if any) and starts its effect.
-    void TryActivateAbility();
+    /// Starts a jump if the pawn is currently grounded; otherwise a no-op.
+    void TryJump();
+
+    /// Applies gravity to an in-progress jump and lands it at zero height.
+    void UpdateJump(float deltaTime);
 
     /// Counts down an active timed ability and clears it on expiry.
     void UpdateAbility(float deltaTime);
@@ -154,7 +198,21 @@ private:
 
     glm::vec3 velocity = glm::vec3(0.0f);
 
+    // --- Jump state ---
+
     bool spaceKeyWasDown = false;
+
+    bool isAirborne = false;
+
+    float jumpHeight = 0.0f;
+
+    float jumpVerticalVelocity = 0.0f;
+
+    // --- Interact state ---
+
+    bool interactKeyWasDown = false;
+
+    bool interactPulsePending = false;
 
     // --- Ability state ---
 
