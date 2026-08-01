@@ -245,13 +245,16 @@ void Pawn::UpdateAnimation(float deltaTime)
         IsGrounded(),
         GetSpeedMultiplier());
 
-    // The rig stands on the ground the pawn is over, not at the pawn's
-    // centre: the models are authored with y = 0 at the feet, and the
-    // transform is the middle of a cube that no longer exists.
+    // The rig's origin is at its feet while the authoritative gameplay
+    // transform is at the centre of the pawn's collision volume. Derive the
+    // complete visual root from that transform so its X/Z movement, terrain
+    // height and physical jump all travel through the same path. Using the
+    // lane's fixed groundHeight here would discard the jump component and
+    // leave only the camera (which follows the gameplay transform) moving.
     const glm::vec3& position = transform.GetPosition();
 
     rig->SetGroundPosition(
-        glm::vec3(position.x, groundHeight, position.z));
+        position - glm::vec3(0.0f, GameConfig::PawnHeight * 0.5f, 0.0f));
 
     rig->SetHeadingDegrees(transform.GetRotation().y);
 
