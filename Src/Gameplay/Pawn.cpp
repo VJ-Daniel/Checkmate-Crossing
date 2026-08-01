@@ -19,6 +19,25 @@
 #include "GameConfig.h"
 #include "Input.h"
 #include "Level.h"
+#include "PieceAnimator.h"
+#include "PieceMeshFactory.h"
+#include "PieceRig.h"
+
+namespace
+{
+    /// An empty list to hand back while the pawn is still a cube.
+    const std::vector<std::shared_ptr<SceneNode>>& NoParts()
+    {
+        static const std::vector<std::shared_ptr<SceneNode>> empty;
+
+        return empty;
+    }
+
+    /// How far above its lane the pawn has to be before it counts as
+    /// airborne. Generous enough to swallow the float noise in the terrain
+    /// snap, small enough that any real hop clears it.
+    constexpr float GroundedTolerance = 0.02f;
+}
 
 namespace
 {
@@ -53,6 +72,8 @@ Pawn::Pawn()
     groundHeight(0.0f)
 {
 }
+
+Pawn::~Pawn() = default;
 
 void Pawn::Initialize()
 {
@@ -97,6 +118,10 @@ void Pawn::Update(float deltaTime)
     ApplyTerrainHeight();
 
     UpdateShadow();
+
+    // Last, and reading only what movement has already settled. Animation is
+    // downstream of the gameplay here and never the other way round.
+    UpdateAnimation(deltaTime);
 }
 
 void Pawn::HandleInput()
@@ -107,13 +132,19 @@ void Pawn::HandleInput()
 
     if (glm::length(direction) > 0.0f)
     {
-        // Y-heading toward the movement direction; 0 degrees faces -Z
-        // (toward the king), matching the direction of progress. The cube
-        // placeholder has no visible "front" yet, so the sign here is a
-        // best guess -- flip it if a directional pawn model ends up facing
-        // backward once John's real model/animations are in.
+        // Y-heading toward the movement direction.
+        //
+        // Every piece model is authored facing +Z (see PieceMeshFactory),
+        // and a Y rotation of theta carries +Z round to
+        // (sin theta, 0, cos theta). Pointing that at the travel direction
+        // is therefore atan2(x, z), with no negation on either term.
+        //
+        // The negated Z this replaced dated from when the pawn was a cube
+        // with no visible front, and inverted forward against backward
+        // while leaving left and right correct - which is exactly how the
+        // bug presented once the cube became a real model.
         const float headingDegrees =
-            glm::degrees(std::atan2(direction.x, -direction.z));
+            glm::degrees(std::atan2(direction.x, direction.z));
 
         transform.SetRotation(0.0f, headingDegrees, 0.0f);
     }
@@ -149,6 +180,66 @@ void Pawn::ApplyTerrainHeight()
     adjusted.y = groundHeight + GameConfig::PawnHeight * 0.5f;
 
     transform.SetPosition(adjusted);
+}
+
+void Pawn::AttachRig(PieceMeshLibrary& meshLibrary)
+{
+    const PieceMeshFactory::PieceRigModel& model =
+        meshLibrary.GetRigModel(PieceType::Pawn);
+
+    if (!model.valid)
+        return;
+
+    rig = std::make_unique<PieceRig>();
+    rig->Build(model);
+    rig->SetScale(GameConfig::PieceScale);
+
+    animator = std::make_unique<PieceAnimator>(PieceBodyPlan::Humanoid);
+
+    // The cube goes, but nothing else does: PawnWidth and PawnHeight still
+    // drive the shadow, the terrain snap and every distance check in the
+    // game. The rig is only what the player sees.
+    SetMesh(nullptr);
+
+    UpdateAnimation(0.0f);
+}
+
+const std::vector<std::shared_ptr<SceneNode>>& Pawn::GetRigParts() const
+{
+    return rig ? rig->GetParts() : NoParts();
+}
+
+bool Pawn::IsGrounded() const
+{
+    // ApplyTerrainHeight puts the pawn's centre exactly half its height
+    // above the lane, so anything meaningfully above that is off the ground.
+    const float restingY = groundHeight + GameConfig::PawnHeight * 0.5f;
+
+    return transform.GetPosition().y <= restingY + GroundedTolerance;
+}
+
+void Pawn::UpdateAnimation(float deltaTime)
+{
+    if (!rig || !animator)
+        return;
+
+    animator->Update(
+        deltaTime,
+        IsMoving(),
+        IsGrounded(),
+        GetSpeedMultiplier());
+
+    // The rig stands on the ground the pawn is over, not at the pawn's
+    // centre: the models are authored with y = 0 at the feet, and the
+    // transform is the middle of a cube that no longer exists.
+    const glm::vec3& position = transform.GetPosition();
+
+    rig->SetGroundPosition(
+        glm::vec3(position.x, groundHeight, position.z));
+
+    rig->SetHeadingDegrees(transform.GetRotation().y);
+
+    rig->ApplyPose(animator->GetPose());
 }
 
 void Pawn::CollectPiece(PieceType type)

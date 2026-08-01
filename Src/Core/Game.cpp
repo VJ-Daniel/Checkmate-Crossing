@@ -13,6 +13,7 @@
 
 #include "GameConfig.h"
 #include "ResourceManager.h"
+#include "SceneNode.h"
 #include "Shader.h"
 
 namespace
@@ -48,6 +49,24 @@ namespace
     constexpr float ObstacleSpacing = 1.0f;
 
     constexpr float HazardSpacing = 1.6f;
+
+    /// Which way a piece is turned when it is only being displayed.
+    ///
+    /// Presentation, not orientation: every model faces +Z, and this decides
+    /// nothing about which way is forward. It exists because a horse seen
+    /// head-on is a shapeless lump, so the horse-bodied pieces are stood at
+    /// a quarter turn to show their profile while they sit still.
+    ///
+    /// Applied once when a piece is placed. Anything that later gives a
+    /// piece a real heading simply overwrites it.
+    float PieceDisplayHeadingDegrees(PieceType type)
+    {
+        const bool horseBodied =
+            type == PieceType::Knight ||
+            type == PieceType::MountedPawn;
+
+        return horseBodied ? 90.0f : 0.0f;
+    }
 }
 
 Game::Game()
@@ -107,6 +126,10 @@ bool Game::Initialize(
     pawn->SetLevel(level.get());
 
     pieceMeshes = std::make_shared<PieceMeshLibrary>();
+
+    // After the mesh library exists, and after the pawn: the rig shares the
+    // library's meshes, so neither can be created before the other.
+    pawn->AttachRig(*pieceMeshes);
     obstacleMeshes = std::make_shared<ObstacleMeshLibrary>();
     gateMeshes = std::make_shared<GateMeshLibrary>();
     cageMeshes = std::make_shared<CageMeshLibrary>();
@@ -195,6 +218,9 @@ void Game::BuildShowcase()
                 index,
                 PieceTypeCount,
                 PieceSpacing));
+
+        piece->SetHeadingDegrees(
+            PieceDisplayHeadingDegrees(piece->GetType()));
 
         showcasePieces.push_back(piece);
     }
@@ -508,6 +534,17 @@ void Game::SpawnExampleCollectibles()
                 glm::vec3(x, lane->GetSurfaceHeight(), lane->GetCenterZ()));
         }
     }
+
+    // Same presentation pass as the showcase: the allies stand still until
+    // they are picked up, so the horse-bodied ones are shown in profile.
+    for (const auto& piece : collectibleManager->GetCollectibles())
+    {
+        if (piece)
+        {
+            piece->SetHeadingDegrees(
+                PieceDisplayHeadingDegrees(piece->GetType()));
+        }
+    }
 }
 
 void Game::UpdateCamera()
@@ -533,6 +570,24 @@ void Game::Update(float deltaTime)
 
     if (pawn && pawn->IsActive())
         pawn->Update(deltaTime);
+
+    // Animated pieces need their own tick. Nothing on the field moves them
+    // yet, so they hold the rest pose - but the moment something does call
+    // SetMovementState on one, it walks, with no further wiring here.
+    for (const auto& piece : showcasePieces)
+    {
+        if (piece && piece->IsActive())
+            piece->Update(deltaTime);
+    }
+
+    if (collectibleManager)
+    {
+        for (const auto& piece : collectibleManager->GetCollectibles())
+        {
+            if (piece && piece->IsActive())
+                piece->Update(deltaTime);
+        }
+    }
 
     if (hazardManager && pawn)
         hazardManager->Update(deltaTime, pawn->GetTransform().GetPosition());
@@ -563,6 +618,49 @@ void Game::Update(float deltaTime)
     }
 
     UpdateCamera();
+}
+
+void Game::DrawPiece(const ChessPiece& piece)
+{
+    if (!renderer)
+        return;
+
+    // A rigged piece is several meshes carrying their own transforms; an
+    // unrigged one is a single baked mesh. Both end up in the same Draw, so
+    // nothing downstream of here knows or cares which it is looking at.
+    const auto& parts = piece.GetRigParts();
+
+    if (parts.empty())
+    {
+        renderer->Draw(piece);
+        return;
+    }
+
+    for (const auto& part : parts)
+    {
+        if (part)
+            renderer->Draw(*part);
+    }
+}
+
+void Game::DrawPawn()
+{
+    if (!renderer || !pawn)
+        return;
+
+    const auto& parts = pawn->GetRigParts();
+
+    if (parts.empty())
+    {
+        renderer->Draw(*pawn);
+        return;
+    }
+
+    for (const auto& part : parts)
+    {
+        if (part)
+            renderer->Draw(*part);
+    }
 }
 
 void Game::Render()
@@ -657,10 +755,7 @@ void Game::Render()
     }
 
     for (const auto& piece : showcasePieces)
-    {
-        if (piece)
-            renderer->Draw(*piece);
-    }
+        DrawPiece(*piece);
 
     for (const auto& obstacle : showcaseObstacles)
     {
@@ -680,14 +775,11 @@ void Game::Render()
     if (collectibleManager)
     {
         for (const auto& piece : collectibleManager->GetCollectibles())
-        {
-            if (piece)
-                renderer->Draw(*piece);
-        }
+            DrawPiece(*piece);
     }
 
     if (pawn)
-        renderer->Draw(*pawn);
+        DrawPawn();
 
     // Sprites last, after every opaque mesh.
     //

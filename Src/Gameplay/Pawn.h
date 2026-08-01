@@ -1,5 +1,8 @@
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include <glm.hpp>
 
 #include "ChessPiece.h"
@@ -7,6 +10,10 @@
 #include "WorldObject.h"
 
 class Level;
+class PieceRig;
+class PieceAnimator;
+class PieceMeshLibrary;
+class SceneNode;
 
 /// The player's chess pawn.
 ///
@@ -28,8 +35,37 @@ public:
 
     Pawn();
 
+    /// Out of line, for the forward-declared animation members.
+    ~Pawn() override;
+
     /// Builds the placeholder mesh and applies the spawn pose.
     void Initialize() override;
+
+    //-----------------------------------------------------------
+    // Visuals
+    //
+    // The pawn's body is a rig rather than the placeholder cube, but the
+    // transform, the width and the height it moves and collides with are
+    // unchanged -- the rig is hung off the transform, never the other way
+    // round. Nothing about movement, terrain following or pickup radius
+    // reads the model.
+    //-----------------------------------------------------------
+
+    /// Gives the pawn its animated model. Optional: without it the pawn
+    /// falls back to the placeholder cube and everything else still works.
+    void AttachRig(PieceMeshLibrary& meshLibrary);
+
+    /// The parts to draw, or empty when the pawn is still a cube.
+    const std::vector<std::shared_ptr<SceneNode>>& GetRigParts() const;
+
+    /// True while the pawn is resting on the ground it stands over.
+    ///
+    /// Derived from the pawn's own height above its lane rather than from a
+    /// jump system, because there is no jump system: nothing in the project
+    /// applies gravity or vertical velocity. It is written this way so that
+    /// the day something does lift the pawn, the jump animation starts
+    /// working with no change here.
+    bool IsGrounded() const;
 
     /// Reads input, moves freely along X/Z, clamps to the playable width,
     /// follows the terrain height of the pawn's current lane, and advances
@@ -140,6 +176,17 @@ private:
 
     /// Puts the shadow back under the pawn's current position.
     void UpdateShadow();
+
+    /// Advances the walk/jump animation and stands the rig on the pawn.
+    ///
+    /// Deliberately the last thing Update does and deliberately reads only
+    /// values movement has already finished writing, so animation can never
+    /// feed back into where the pawn is.
+    void UpdateAnimation(float deltaTime);
+
+    std::unique_ptr<PieceRig> rig;
+
+    std::unique_ptr<PieceAnimator> animator;
 
     glm::vec3 spawnPosition;
 

@@ -125,6 +125,12 @@ private:
     /// walk towards it.
     void BuildCheckpointGate();
 
+    /// Draws one chess piece, whether it is a single baked mesh or an
+    /// animated rig made of several.
+    void DrawPiece(const ChessPiece& piece);
+
+    void DrawPawn();
+
     /// Places the visual-only cage and captive King in the final goal area.
     /// Gameplay will later decide when its separate door should open.
     void BuildKingsCage();

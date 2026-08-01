@@ -45,6 +45,11 @@ const Transform3D& WorldObject::GetTransform() const
     return transform;
 }
 
+glm::mat4 WorldObject::GetWorldMatrix() const
+{
+    return transform.GetModelMatrix();
+}
+
 void WorldObject::SetMesh(std::shared_ptr<Mesh> mesh)
 {
     this->mesh = std::move(mesh);

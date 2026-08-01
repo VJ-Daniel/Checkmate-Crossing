@@ -1,8 +1,19 @@
 #pragma once
 
+#include <memory>
+#include <vector>
+
 #include <glm.hpp>
 
 #include "GroundEntity.h"
+
+class PieceRig;
+class PieceAnimator;
+class SceneNode;
+
+/// Forward-declared rather than included: PieceRig reaches PieceMeshFactory,
+/// which needs PieceType from this header. Holding the two behind pointers
+/// breaks that cycle without moving the enum into a header of its own.
 
 /// The six kinds of chess piece in the game.
 ///
@@ -55,6 +66,9 @@ public:
         PieceType type,
         PieceTeam team = PieceTeam::White);
 
+    /// Out of line, so the forward-declared members above can be destroyed.
+    ~ChessPiece() override;
+
     PieceType GetType() const;
 
     PieceTeam GetTeam() const;
@@ -63,9 +77,67 @@ public:
     /// switching sides costs nothing.
     void SetTeam(PieceTeam team);
 
+    //-----------------------------------------------------------
+    // Animation
+    //
+    // Optional. A piece with a rig draws as a hierarchy of parts and can be
+    // animated; one without still draws as a single baked mesh, which is all
+    // a piece that never moves needs. Both go through the same renderer.
+    //-----------------------------------------------------------
+
+    /// Gives this piece an animated rig. Needs a live GL context.
+    void AttachRig(
+        std::unique_ptr<PieceRig> rig,
+        bool quadruped);
+
+    bool HasRig() const;
+
+    /// The parts to draw, or an empty list when this piece has no rig and
+    /// should be drawn as an ordinary WorldObject instead.
+    const std::vector<std::shared_ptr<SceneNode>>& GetRigParts() const;
+
+    /// Tells the animation what the piece is doing.
+    ///
+    /// Movement state is pushed in rather than read out of anything, which
+    /// is what keeps this class free of any opinion about how a piece moves.
+    /// A piece nobody calls this on simply stands still.
+    void SetMovementState(
+        bool isMoving,
+        bool isGrounded,
+        float speedScale = 1.0f);
+
+    /// Advances the animation. Does nothing without a rig.
+    void Update(float deltaTime) override;
+
+    /// Keeps the rig standing where the piece does.
+    void SetGroundPosition(const glm::vec3& groundPosition) override;
+
+    /// Faces the piece along a heading in degrees, for anything that walks.
+    void SetHeadingDegrees(float degrees);
+
+    /// Uniform scale applied to the rig, matching the transform scale a
+    /// baked piece is given.
+    void SetRigScale(float uniformScale);
+
 private:
+
+    void RefreshRig();
 
     PieceType type;
 
     PieceTeam team;
+
+    std::unique_ptr<PieceRig> rig;
+
+    std::unique_ptr<PieceAnimator> animator;
+
+    bool moving = false;
+
+    bool grounded = true;
+
+    float speedScale = 1.0f;
+
+    float headingDegrees = 0.0f;
+
+    float rigScale = 1.0f;
 };

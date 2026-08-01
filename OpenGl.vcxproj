@@ -32,7 +32,9 @@
     <ClCompile Include="Src\Gameplay\Obstacle.cpp" />
     <ClCompile Include="Src\Gameplay\ObstacleMeshFactory.cpp" />
     <ClCompile Include="Src\Gameplay\Pawn.cpp" />
+    <ClCompile Include="Src\Gameplay\PieceAnimator.cpp" />
     <ClCompile Include="Src\Gameplay\PieceMeshFactory.cpp" />
+    <ClCompile Include="Src\Gameplay\PieceRig.cpp" />
     <ClCompile Include="Src\Gameplay\RollingMotion.cpp" />
     <ClCompile Include="Src\Graphics\Camera3D.cpp" />
     <ClCompile Include="Src\Graphics\Mesh.cpp" />
@@ -52,6 +54,7 @@
     <ClCompile Include="Src\Graphics\SpriteSheet.cpp" />
     <ClCompile Include="Src\Dependencies\STB\stb_image.cpp" />
     <ClCompile Include="Src\Graphics\Texture2D.cpp" />
+    <ClCompile Include="Src\Core\SceneNode.cpp" />
     <ClCompile Include="Src\Core\Transform3D.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -68,7 +71,9 @@
     <ClInclude Include="Src\Gameplay\Obstacle.h" />
     <ClInclude Include="Src\Gameplay\ObstacleMeshFactory.h" />
     <ClInclude Include="Src\Gameplay\Pawn.h" />
+    <ClInclude Include="Src\Gameplay\PieceAnimator.h" />
     <ClInclude Include="Src\Gameplay\PieceMeshFactory.h" />
+    <ClInclude Include="Src\Gameplay\PieceRig.h" />
     <ClInclude Include="Src\Gameplay\RollingMotion.h" />
     <ClInclude Include="Src\Graphics\Camera3D.h" />
     <ClInclude Include="Src\Graphics\Mesh.h" />
@@ -86,6 +91,7 @@
     <ClInclude Include="Src\Graphics\SpriteRenderer.h" />
     <ClInclude Include="Src\Graphics\SpriteSheet.h" />
     <ClInclude Include="Src\Graphics\Texture2D.h" />
+    <ClInclude Include="Src\Core\SceneNode.h" />
     <ClInclude Include="Src\Core\Transform3D.h" />
     <ClInclude Include="Src\Resources\ResourceManager.h" />
   </ItemGroup>

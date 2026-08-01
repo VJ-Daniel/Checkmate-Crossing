@@ -33,6 +33,20 @@ public:
 
     const glm::vec3& GetColor() const;
 
+    /// Shifts everything added from here on, so a part can be authored in
+    /// the model's own coordinates and still come out centred on its pivot.
+    ///
+    /// This is what lets an animated figure reuse the very same builders as
+    /// the static one. A leg has to rotate about its hip, which means its
+    /// mesh needs the hip at the origin - but the body builders are written
+    /// in ground-relative coordinates, where the hip is most of a unit up.
+    /// Setting the origin to the hip and calling the ordinary leg builder
+    /// resolves that without a second set of part functions, and without any
+    /// risk of the two drifting apart.
+    void SetOrigin(const glm::vec3& origin);
+
+    const glm::vec3& GetOrigin() const;
+
     /// Appends a box given its centre and its size on each axis.
     void AddBox(
         const glm::vec3& center,
@@ -159,4 +173,6 @@ private:
     std::vector<unsigned int> indices;
 
     glm::vec3 currentColor;
+
+    glm::vec3 currentOrigin;
 };
