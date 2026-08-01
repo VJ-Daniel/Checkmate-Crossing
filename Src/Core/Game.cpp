@@ -11,6 +11,8 @@
 
 #include "Game.h"
 
+#include <algorithm>
+
 #include "GameConfig.h"
 #include "ResourceManager.h"
 #include "Shader.h"
@@ -454,6 +456,77 @@ void Game::UpdateCamera()
         pawn->GetTransform().GetPosition() + lookAhead);
 }
 
+bool Game::TryInteractWithCheckpointGate(const glm::vec3& pawnPosition)
+{
+    if (!checkpointGate)
+        return false;
+
+    const float distance = glm::length(
+        pawnPosition - checkpointGate->GetGroundPosition());
+
+    if (distance > GameConfig::InteractRadius)
+        return false;
+
+    if (checkpointGate->GetDoorAngle() < CheckpointGate::GetMaxDoorAngle())
+        checkpointGateOpening = true;
+
+    // Standing at the gate at all means E belongs to it, not the ability --
+    // even if it's already fully open and there's nothing left to start.
+    return true;
+}
+
+bool Game::TryInteractWithKingsCage(const glm::vec3& pawnPosition)
+{
+    if (!kingsCage || !kingsCage->GetDoor())
+        return false;
+
+    const float distance = glm::length(
+        pawnPosition - kingsCage->GetGroundPosition());
+
+    if (distance > GameConfig::InteractRadius)
+        return false;
+
+    if (kingsCageDoorAngle < GameConfig::KingsCageMaxDoorAngle)
+        kingsCageDoorOpening = true;
+
+    return true;
+}
+
+void Game::UpdateDoors(float deltaTime)
+{
+    if (checkpointGateOpening && checkpointGate)
+    {
+        const float newAngle = std::min(
+            checkpointGate->GetDoorAngle() +
+                GameConfig::DoorOpenSpeed * deltaTime,
+            CheckpointGate::GetMaxDoorAngle());
+
+        checkpointGate->SetDoorAngle(newAngle);
+
+        if (newAngle >= CheckpointGate::GetMaxDoorAngle())
+            checkpointGateOpening = false;
+    }
+
+    if (kingsCageDoorOpening && kingsCage)
+    {
+        if (WorldObject* door = kingsCage->GetDoor())
+        {
+            kingsCageDoorAngle = std::min(
+                kingsCageDoorAngle + GameConfig::DoorOpenSpeed * deltaTime,
+                GameConfig::KingsCageMaxDoorAngle);
+
+            // The door's origin is authored on its own hinge (see
+            // CageMetrics::DoorHingeX/Y/Z), so a plain Y rotation is the
+            // entire animation, the same way CheckpointGate's leaves work.
+            door->GetTransform().SetRotation(
+                0.0f, kingsCageDoorAngle, 0.0f);
+
+            if (kingsCageDoorAngle >= GameConfig::KingsCageMaxDoorAngle)
+                kingsCageDoorOpening = false;
+        }
+    }
+}
+
 void Game::Update(float deltaTime)
 {
     if (level)
@@ -489,6 +562,24 @@ void Game::Update(float deltaTime)
             pawn->GetTransform().GetPosition(),
             GameConfig::BishopRemovalCount);
     }
+
+    // E's target isn't decided inside Pawn (see ConsumeInteractPulse) --
+    // resolve it here against whatever's actually in the level: the
+    // checkpoint gate, then the king's cage door, then finally the pawn's
+    // own banked ability if neither was in range.
+    if (pawn && pawn->ConsumeInteractPulse())
+    {
+        const glm::vec3 pawnPosition = pawn->GetTransform().GetPosition();
+
+        const bool interactedWithWorld =
+            TryInteractWithCheckpointGate(pawnPosition) ||
+            TryInteractWithKingsCage(pawnPosition);
+
+        if (!interactedWithWorld)
+            pawn->TryActivateAbility();
+    }
+
+    UpdateDoors(deltaTime);
 
     UpdateCamera();
 }
