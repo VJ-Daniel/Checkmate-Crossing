@@ -201,4 +201,35 @@ namespace GameConfig
 
     /// How close the pawn needs to be to a collectible ally to pick it up.
     constexpr float CollectiblePickupRadius = 0.6f;
+
+    //---------------------------------------------------------
+    // Jumping (GDD section 4: Fence/Rock/Palisade "can be jumped over")
+    //
+    // NOTE(Ayub): the GDD describes the effect (some obstacles can be
+    // jumped over) but not the numbers. Placeholder tuning -- adjust
+    // freely once Kaung's collision has a real height check to clear.
+    //---------------------------------------------------------
+
+    /// Upward speed the instant Space is pressed.
+    constexpr float JumpInitialVelocity = 4.2f;
+
+    /// Downward acceleration applied while airborne. Deliberately snappier
+    /// than real gravity for an arcade feel.
+    constexpr float JumpGravity = 13.0f;
+
+    //---------------------------------------------------------
+    // Interaction (E)
+    //---------------------------------------------------------
+
+    /// How close the pawn needs to be to a door/gate for E to target it
+    /// instead of falling back to the banked ability.
+    constexpr float InteractRadius = 1.6f;
+
+    /// How fast a door swings open, in degrees per second.
+    constexpr float DoorOpenSpeed = 90.0f;
+
+    /// The King's Cage door has no MaxDoorAngle of its own (unlike
+    /// CheckpointGate) since nothing has driven it open before now.
+    /// Matches the checkpoint gate's convention.
+    constexpr float KingsCageMaxDoorAngle = 90.0f;
 }

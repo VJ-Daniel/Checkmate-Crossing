@@ -163,6 +163,34 @@ private:
     /// collectible allies. Delete once Liyuu's level data places these.
     void SpawnExampleCollectibles();
 
+    //---------------------------------------------------------
+    // Interaction (E)
+    //
+    // Pawn only reports "E was pressed" (ConsumeInteractPulse) since it
+    // has no reference to the checkpoint gate or king's cage door. This is
+    // where that press gets resolved against them, falling back to the
+    // pawn's banked ability if neither is in range.
+    //---------------------------------------------------------
+
+    /// If the pawn is within GameConfig::InteractRadius of the checkpoint
+    /// gate, starts it opening (if closed) and returns true either way --
+    /// standing at the gate means E belongs to it, not the ability.
+    bool TryInteractWithCheckpointGate(const glm::vec3& pawnPosition);
+
+    /// Same idea as TryInteractWithCheckpointGate, for the king's cage
+    /// door.
+    ///
+    /// NOTE(Ayub): this only swings the door open. Whether that should also
+    /// count as rescuing the king / winning the level is Kaung's call
+    /// ("king rescue, win conditions" is his); nothing here decides that.
+    bool TryInteractWithKingsCage(const glm::vec3& pawnPosition);
+
+    /// Advances any door currently mid-open, a handful of degrees per
+    /// second toward fully open. A placeholder tween -- John's animation
+    /// pass owns "checkpoint activation" for real; this just makes E
+    /// functionally open something instead of just changing a flag.
+    void UpdateDoors(float deltaTime);
+
     std::shared_ptr<Camera3D> camera;
 
     std::shared_ptr<MeshRenderer> renderer;
@@ -195,6 +223,17 @@ private:
     std::shared_ptr<HazardManager> hazardManager;
 
     std::shared_ptr<CollectibleManager> collectibleManager;
+
+    /// True while E has started the checkpoint gate opening and it hasn't
+    /// reached CheckpointGate::GetMaxDoorAngle() yet.
+    bool checkpointGateOpening = false;
+
+    /// Same idea for the king's cage door, which -- unlike the checkpoint
+    /// gate -- has no angle getter of its own, so the angle is tracked
+    /// here instead.
+    bool kingsCageDoorOpening = false;
+
+    float kingsCageDoorAngle = 0.0f;
 
     /// Shared quad and shader for every sprite. Held here so its GL objects
     /// are released in Shutdown, while the context is still alive.
