@@ -585,6 +585,14 @@ namespace PieceMeshFactory
     /// Height the hands end up at, which is where a held prop is gripped.
     float GetHandY(const FigureSpec& spec);
 
+    /// Bottom and top of the eyes on a detailed face.
+    ///
+    /// Shared so headwear can be kept clear of the face by construction
+    /// rather than by a rim height that happens to work for one figure.
+    float GetEyeBottomY(const FigureSpec& spec);
+
+    float GetFaceTopY(const FigureSpec& spec);
+
     /// One leg or one arm, for building a rig part. AddLegs and AddArms are
     /// these in a loop, so the static and animated models stay identical.
     void AddLeg(

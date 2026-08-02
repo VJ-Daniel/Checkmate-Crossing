@@ -154,6 +154,16 @@ public:
 
     bool IsMoving() const;
 
+    /// True while a movement key is held, whether or not the pawn actually
+    /// moved this frame.
+    ///
+    /// IsMoving reads velocity, which collision legitimately zeroes when the
+    /// pawn is pressed against a wall - so driving the walk cycle from it
+    /// froze the character mid-stride the moment it touched anything. The
+    /// animation asks what the player is trying to do; the gameplay still
+    /// asks what actually happened.
+    bool IsMovementInputActive() const;
+
     /// Row of the lane the pawn currently stands over, derived from its
     /// world Z. Hazard spawning and collision can key off this to know
     /// which lane's rules currently apply.
@@ -372,6 +382,8 @@ private:
     float slowMultiplier = 1.0f;
 
     float slowTimer = 0.0f;
+
+    bool movementInputActive = false;
 
     float knockbackTimer = 0.0f;
 

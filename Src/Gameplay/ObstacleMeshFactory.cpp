@@ -144,13 +144,26 @@ namespace ObstacleMeshFactory
         {
             // Solid block with an overhanging cap, which is the whole
             // difference between a wall and a plain box.
+            //
+            // Tall enough to read as a barrier rather than a kerb: the pawn
+            // stands 0.9, so the old 0.78 top sat below its shoulder and the
+            // wall looked like something to step over. Thickness, width and
+            // the cap's overhang are unchanged - only the body grew.
             builder.SetColor(ObstaclePalette::Stone);
-            builder.AddSlabAt(0.0f, 0.0f, 0.94f, 0.28f, 0.0f, 0.64f);
+            builder.AddSlabAt(0.0f, 0.0f, 0.94f, 0.28f, 0.0f, 0.56f);
+
+            // Second course, a shade darker. Without it the taller body is
+            // one flat slab; with it the wall keeps the same block scale it
+            // had before and simply stacks another row.
+            builder.SetColor(ObstaclePalette::Stone * 0.92f);
+            builder.AddSlabAt(0.0f, 0.0f, 0.90f, 0.28f, 0.56f, 1.12f);
 
             builder.SetColor(ObstaclePalette::DarkStone);
-            builder.AddSlabAt(0.0f, 0.0f, 1.02f, 0.34f, 0.64f, 0.78f);
+            builder.AddSlabAt(0.0f, 0.0f, 1.02f, 0.34f, 1.12f, 1.28f);
 
-            model.height = 0.9f;
+            // Reported from the geometry, so the collision box Kaung's
+            // system builds from GetHeight() grows with the wall.
+            model.height = 1.28f;
             model.footprintWidth = 1.02f;
             model.footprintDepth = 0.34f;
             break;

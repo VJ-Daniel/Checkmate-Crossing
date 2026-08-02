@@ -2,7 +2,6 @@
 #include "GameConfig.h"
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 
 // ---- Helper to get collision shape from hazards ----
 
@@ -252,14 +251,7 @@ void HazardCollision::CheckStationaryHazards(
             if (type == ObstacleType::Wall || type == ObstacleType::Tree)
             {
                 // Unconditional block: even if jumping, you stop
-                glm::vec3 pawnPos = pawn->GetTransform().GetPosition();
-                glm::vec3 nearest = obstacleCollision.GetNearestPoint(pawnPos);
-                glm::vec3 pushDir = glm::normalize(pawnPos - nearest);
-                float pushDist = glm::length(pawnPos - nearest) + 0.05f;
-                if (glm::length(pushDir) > 0.01f)
-                {
-                    HandleBlock(pawnPos + pushDir * pushDist, pushDir);
-                }
+                BlockAgainst(obstacleCollision);
                 continue;
             }
 
@@ -270,14 +262,7 @@ void HazardCollision::CheckStationaryHazards(
             {
                 if (!isJumping) // Only block if NOT jumping
                 {
-                    glm::vec3 pawnPos = pawn->GetTransform().GetPosition();
-                    glm::vec3 nearest = obstacleCollision.GetNearestPoint(pawnPos);
-                    glm::vec3 pushDir = glm::normalize(pawnPos - nearest);
-                    float pushDist = glm::length(pawnPos - nearest) + 0.05f;
-                    if (glm::length(pushDir) > 0.01f)
-                    {
-                        HandleBlock(pawnPos + pushDir * pushDist, pushDir);
-                    }
+                    BlockAgainst(obstacleCollision);
                 }
                 continue;
             }
@@ -301,14 +286,7 @@ void HazardCollision::CheckStationaryHazards(
                 }
                 else // Not jumping, just walking into it
                 {
-                    glm::vec3 pawnPos = pawn->GetTransform().GetPosition();
-                    glm::vec3 nearest = obstacleCollision.GetNearestPoint(pawnPos);
-                    glm::vec3 pushDir = glm::normalize(pawnPos - nearest);
-                    float pushDist = glm::length(pawnPos - nearest) + 0.05f;
-                    if (glm::length(pushDir) > 0.01f)
-                    {
-                        HandleBlock(pawnPos + pushDir * pushDist, pushDir);
-                    }
+                    BlockAgainst(obstacleCollision);
                 }
                 continue;
             }
@@ -455,11 +433,24 @@ bool HazardCollision::ApplyDamage(float damage, const glm::vec3& direction, floa
     return true;
 }
 
-void HazardCollision::HandleBlock(const glm::vec3& position, const glm::vec3& direction)
+void HazardCollision::BlockAgainst(const CollisionComponent& obstacle)
 {
-    if (onBlocked)
-        onBlocked(position);
+    if (!pawn)
+        return;
 
-    // Move the pawn to the nearest safe position
-    pawn->GetTransform().SetPosition(position);
+    // Exactly the penetration depth, along the axis the pawn is least buried
+    // in. Resting flush on the surface means the next frame finds no overlap
+    // and pushes nothing, which is what stops the shaking.
+    const glm::vec3 push = pawnCollision.ResolveHorizontalOverlap(obstacle);
+
+    if (std::abs(push.x) < 1e-5f && std::abs(push.z) < 1e-5f)
+        return;
+
+    const glm::vec3 resolved = pawn->GetTransform().GetPosition() + push;
+
+    // The listener owns the pawn, so it applies the position and decides what
+    // to do with the velocity. Handing it the push as well is what lets it
+    // cancel only the blocked axis and leave the pawn free to slide.
+    if (onBlocked)
+        onBlocked(resolved, push);
 }

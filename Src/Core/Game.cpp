@@ -12,6 +12,7 @@
 #include "Game.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "GameConfig.h"
 #include "ResourceManager.h"
@@ -223,10 +224,23 @@ bool Game::Initialize(
         pawn->SetKnockback(knockback, isCow);
         };
 
-    hazardCollision->onBlocked = [this](const glm::vec3& position) {
+    hazardCollision->onBlocked =
+        [this](const glm::vec3& position, const glm::vec3& push) {
         pawn->GetTransform().SetPosition(position);
-        // Stop velocity when blocked
-        pawn->SetVelocity(glm::vec3(0.0f));
+
+        // Cancel only the axis that was actually blocked. Zeroing the whole
+        // velocity stopped the pawn dead against a wall it was merely walking
+        // past at an angle; this keeps the tangent component so it slides
+        // along the surface, the way it already does against the level bounds.
+        glm::vec3 velocity = pawn->GetVelocity();
+
+        if (std::abs(push.x) > 1e-5f)
+            velocity.x = 0.0f;
+
+        if (std::abs(push.z) > 1e-5f)
+            velocity.z = 0.0f;
+
+        pawn->SetVelocity(velocity);
         };
 
     hazardCollision->onSlowApplied = [this](float duration, float amount, bool linger) {

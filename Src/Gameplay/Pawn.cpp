@@ -188,6 +188,10 @@ void Pawn::HandleInput()
 {
     const glm::vec3 direction = ReadMoveDirection();
 
+    // Recorded before collision gets a say, so the walk cycle keeps
+    // running while the pawn is held against a wall.
+    movementInputActive = glm::length(direction) > 0.0f;
+
     // Knockback overrides input while it lasts, so a hit actually pushes the
     // pawn instead of being cancelled by whatever key is held.
     if (knockbackTimer <= 0.0f)
@@ -662,6 +666,11 @@ void Pawn::SetMoveSpeed(float unitsPerSecond)
 const glm::vec3& Pawn::GetVelocity() const
 {
     return velocity;
+}
+
+bool Pawn::IsMovementInputActive() const
+{
+    return movementInputActive;
 }
 
 bool Pawn::IsMoving() const

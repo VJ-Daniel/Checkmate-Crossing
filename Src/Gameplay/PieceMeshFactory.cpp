@@ -56,6 +56,10 @@ namespace
     // degrees away from a pawn given the same heading.
     //---------------------------------------------------------
 
+    /// Size of one eye block on a detailed face.
+    constexpr float FaceEyeWidth = 0.034f;
+    constexpr float FaceEyeHeight = 0.030f;
+
     constexpr float HorseHoofTop = 0.14f;
     constexpr float HorseLowerLegTop = 0.34f;
     constexpr float HorseBellyY = 0.44f;
@@ -120,6 +124,19 @@ namespace PieceMeshFactory
     float GetHandY(const FigureSpec& spec)
     {
         return GetShoulderPivotY(spec) - 0.13f - 0.13f - 0.06f;
+    }
+
+    float GetEyeBottomY(const FigureSpec& spec)
+    {
+        // Set down from the crown by a fixed fraction of the head, so every
+        // figure's eyes sit at the same place on its own face whatever size
+        // that head is.
+        return spec.headTop - (spec.headTop - spec.shoulderTop) * 0.42f;
+    }
+
+    float GetFaceTopY(const FigureSpec& spec)
+    {
+        return GetEyeBottomY(spec) + FaceEyeHeight;
     }
 
     void AddLeg(
@@ -325,7 +342,7 @@ namespace PieceMeshFactory
         if (spec.detailedFace)
         {
             const float faceZ = spec.headDepth * 0.5f;
-            const float eyeY = spec.headTop - (spec.headTop - spec.shoulderTop) * 0.42f;
+            const float eyeY = GetEyeBottomY(spec);
 
             // Hair down both sides of the head and across the back, framing
             // the face the way the reference sheet's head study does. Left
@@ -359,9 +376,9 @@ namespace PieceMeshFactory
                 AddFigurePart(
                     builder, spec,
                     static_cast<float>(side) * spec.headWidth * 0.22f,
-                    faceZ + 0.006f,
-                    eyeY, eyeY + 0.028f,
-                    0.030f, 0.014f);
+                    faceZ + 0.008f,
+                    eyeY, eyeY + FaceEyeHeight,
+                    FaceEyeWidth, 0.016f);
             }
         }
 
@@ -410,9 +427,21 @@ namespace PieceMeshFactory
         const float towerWidth = spec.headWidth + 0.055f;
         const float towerTop = y + 0.055f;
 
+        // The rim sits just above the eyes rather than across them.
+        //
+        // It used to drop to y - 0.045, which put it straight through the
+        // eye blocks - and because the tower is also deeper than the head,
+        // it occluded them outright rather than merely overlapping. The rook
+        // was the only figure whose face this happened to, and it read as
+        // faceless from the gameplay camera. GetFaceTopY is where the eyes
+        // stop, so the helmet is clear of them by construction rather than
+        // by a number that happens to work today.
+        const float rimBottom =
+            std::max(GetFaceTopY(spec) + 0.012f, y - 0.045f);
+
         AddFigurePart(
             builder, spec, 0.0f, 0.0f,
-            y - 0.045f, towerTop,
+            rimBottom, towerTop,
             towerWidth, spec.headDepth + 0.055f);
 
         return AddCrenellations(

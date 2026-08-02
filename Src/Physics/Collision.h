@@ -65,6 +65,27 @@ public:
     /// Get the nearest point on the collision volume surface
     glm::vec3 GetNearestPoint(const glm::vec3& point) const;
 
+    /// The shortest horizontal push that separates this volume from another.
+    ///
+    /// Zero when they are not actually overlapping, so a caller can use it as
+    /// its own "am I blocked" test.
+    ///
+    /// This is the fix for the wall jitter. The previous resolution moved the
+    /// pawn to nearest + normalize(pos - nearest) * (|pos - nearest| + skin),
+    /// which is the pawn's own position plus that whole distance again - an
+    /// ejection roughly twice as far as the overlap, not a resolution. Held
+    /// against a wall the pawn was thrown clear, walked back in next frame,
+    /// and was thrown clear again: the oscillation that reads as shaking.
+    ///
+    /// Pushing out by exactly the penetration depth leaves the pawn resting
+    /// flush on the surface, so the following frame has nothing left to
+    /// resolve and the position is stable.
+    ///
+    /// Only X and Z are considered. The pawn's height belongs to the terrain
+    /// snap and the jump arc, and pushing it up out of a wall would let the
+    /// player climb one.
+    glm::vec3 ResolveHorizontalOverlap(const CollisionComponent& other) const;
+
     /// Update position of the collision volume
     void SetPosition(const glm::vec3& position);
 

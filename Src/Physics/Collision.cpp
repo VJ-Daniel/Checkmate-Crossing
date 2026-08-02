@@ -179,3 +179,43 @@ void CollisionComponent::UpdateFromEntity(const GroundEntity& entity, float scal
         SetBox(center, glm::vec3(width * 0.5f, height * 0.5f, depth * 0.5f));
     }
 }
+
+glm::vec3 CollisionComponent::ResolveHorizontalOverlap(
+    const CollisionComponent& other) const
+{
+    // Both volumes are treated as their bounding boxes. A circle's box is a
+    // fair stand-in at this scale and keeps one code path for the resolve.
+    const glm::vec3 aCenter = useBox ? box.center : circle.center;
+    const glm::vec3 aHalf = useBox
+        ? box.halfExtents
+        : glm::vec3(circle.radius, circle.radius, circle.radius);
+
+    const glm::vec3 bCenter = other.useBox
+        ? other.box.center
+        : other.circle.center;
+    const glm::vec3 bHalf = other.useBox
+        ? other.box.halfExtents
+        : glm::vec3(other.circle.radius, other.circle.radius,
+            other.circle.radius);
+
+    const float deltaX = aCenter.x - bCenter.x;
+    const float deltaZ = aCenter.z - bCenter.z;
+
+    const float overlapX = (aHalf.x + bHalf.x) - std::abs(deltaX);
+    const float overlapZ = (aHalf.z + bHalf.z) - std::abs(deltaZ);
+
+    // Not touching on one axis means not touching at all.
+    if (overlapX <= 0.0f || overlapZ <= 0.0f)
+        return glm::vec3(0.0f);
+
+    // Leave along whichever axis is least buried. That is what makes walking
+    // into a wall face push straight back out rather than sliding round it.
+    if (overlapX < overlapZ)
+    {
+        const float sign = (deltaX < 0.0f) ? -1.0f : 1.0f;
+        return glm::vec3(overlapX * sign, 0.0f, 0.0f);
+    }
+
+    const float sign = (deltaZ < 0.0f) ? -1.0f : 1.0f;
+    return glm::vec3(0.0f, 0.0f, overlapZ * sign);
+}

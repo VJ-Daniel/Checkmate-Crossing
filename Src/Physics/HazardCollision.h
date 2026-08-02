@@ -54,7 +54,10 @@ public:
     std::function<void(const glm::vec3&, bool)> onKnockback;
 
     /// Callback for when the pawn is blocked
-    std::function<void(const glm::vec3&)> onBlocked;
+    /// Fired when an obstacle blocks the pawn. Receives the resolved
+    /// position and the push that got it there, so the listener can cancel
+    /// only the blocked axis and leave the pawn sliding along the surface.
+    std::function<void(const glm::vec3&, const glm::vec3&)> onBlocked;
 
     /// Callback for when the pawn is slowed
     std::function<void(float, float, bool)> onSlowApplied;
@@ -70,5 +73,7 @@ private:
     bool ApplyDamage(float damage, const glm::vec3& direction, float knockback);
 
     // Check block movement
-    void HandleBlock(const glm::vec3& position, const glm::vec3& direction);
+    /// Pushes the pawn clear of one obstacle by the minimum distance and
+    /// reports the push, so the listener can cancel just that axis.
+    void BlockAgainst(const CollisionComponent& obstacle);
 };
