@@ -22,19 +22,19 @@
 namespace PiecePalette
 {
     /// The dominant material, left at full team colour.
-    inline const glm::vec3 Armor = glm::vec3(1.00f);
+    inline const glm::vec3 Armor = glm::vec3(0.87f, 0.85f, 0.82f);
 
     // The dark end is kept well clear of black on purpose. The directional
     // light already pulls front faces down to about 0.63 of their colour, so
     // a material much below 0.4 loses all its internal shape and the robes
     // and capes turn into flat silhouettes.
-    inline const glm::vec3 Metal = glm::vec3(0.90f);
-    inline const glm::vec3 Skin = glm::vec3(0.74f);
-    inline const glm::vec3 Cloth = glm::vec3(0.62f);
-    inline const glm::vec3 Wood = glm::vec3(0.56f);
-    inline const glm::vec3 Mane = glm::vec3(0.54f);
-    inline const glm::vec3 Leather = glm::vec3(0.46f);
-    inline const glm::vec3 Hair = glm::vec3(0.36f);
+    inline const glm::vec3 Metal = glm::vec3(0.72f, 0.74f, 0.78f);
+    inline const glm::vec3 Skin = glm::vec3(0.83f, 0.68f, 0.56f);
+    inline const glm::vec3 Cloth = glm::vec3(0.22f, 0.30f, 0.43f);
+    inline const glm::vec3 Wood = glm::vec3(0.33f, 0.22f, 0.10f);
+    inline const glm::vec3 Mane = glm::vec3(0.28f, 0.19f, 0.11f);
+    inline const glm::vec3 Leather = glm::vec3(0.46f, 0.31f, 0.15f);
+    inline const glm::vec3 Hair = glm::vec3(0.18f, 0.12f, 0.08f);
 }
 
 /// Every material a piece can be painted with, named by what it is rather
