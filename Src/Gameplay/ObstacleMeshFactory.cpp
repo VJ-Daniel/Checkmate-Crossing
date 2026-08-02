@@ -122,7 +122,6 @@ namespace ObstacleMeshFactory
             model.footprintWidth = 0.64f;
             break;
         }
-
         case ObstacleType::Fence:
         {
             // Two posts, two rails. Deliberately open, so it reads as a
@@ -151,7 +150,7 @@ namespace ObstacleMeshFactory
             builder.SetColor(ObstaclePalette::DarkStone);
             builder.AddSlabAt(0.0f, 0.0f, 1.02f, 0.34f, 0.64f, 0.78f);
 
-            model.height = 0.78f;
+            model.height = 0.9f;
             model.footprintWidth = 1.02f;
             model.footprintDepth = 0.34f;
             break;
@@ -226,6 +225,20 @@ namespace ObstacleMeshFactory
             break;
         }
 
+        case ObstacleType::Mud:
+        {
+            // A flat, muddy brown puddle.
+            builder.SetColor(glm::vec3(0.45f, 0.30f, 0.15f)); // Muddy brown
+
+            // CHANGED: Increased height from 0.15f to 0.30f
+            builder.AddSlabAt(0.0f, 0.0f, 0.8f, 0.8f, 0.0f, 0.30f);
+
+            model.height = 0.30f;  
+            model.footprintWidth = 0.8f;
+            model.footprintDepth = 0.8f;
+            break;
+        }
+
         case ObstacleType::Palisade:
         {
             // A row of sharpened stakes lashed together. The binding rail is
@@ -242,7 +255,7 @@ namespace ObstacleMeshFactory
             builder.SetColor(ObstaclePalette::DarkWood);
             builder.AddSlabAt(0.0f, 0.07f, 1.00f, 0.06f, 0.42f, 0.52f);
 
-            model.height = 0.92f;
+            model.height = 0.75f;
             model.footprintWidth = 1.00f;
             model.footprintDepth = 0.20f;
             break;
@@ -427,7 +440,23 @@ ObstacleMeshLibrary::ObstacleMeshLibrary()
 
 const ObstacleModel& ObstacleMeshLibrary::GetModel(ObstacleType type)
 {
-    ObstacleModel& model = obstacleModels[static_cast<int>(type)];
+    // FORCE the correct mapping manually so it matches your new switch order!
+    int index = 0;
+    switch (type)
+    {
+    case ObstacleType::Tree:     index = 0; break;
+    case ObstacleType::Rock:     index = 1; break;
+    case ObstacleType::Fence:    index = 2; break;
+    case ObstacleType::Wall:     index = 3; break;
+    case ObstacleType::Bush:     index = 4; break;
+    case ObstacleType::Spikes:   index = 5; break;
+    case ObstacleType::Cow:      index = 6; break;
+    case ObstacleType::Mud:      index = 7; break;
+    case ObstacleType::Palisade: index = 8; break;
+    default:                     index = 0; break;
+    }
+
+    ObstacleModel& model = obstacleModels[index];
 
     if (!model.mesh)
         model = ObstacleMeshFactory::Create(type);

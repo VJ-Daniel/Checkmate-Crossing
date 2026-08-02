@@ -201,4 +201,28 @@ namespace GameConfig
 
     /// How close the pawn needs to be to a collectible ally to pick it up.
     constexpr float CollectiblePickupRadius = 0.6f;
-}
+
+    //---------------------------------------------------------
+    // Collision Configuration
+    //
+    //---------------------------------------------------------
+    
+    // Time after taking damage before the pawn can be damaged again
+    constexpr float DamageCooldown = 0.5f;
+
+    // How far the pawn is knocked back when hit
+    constexpr float KnockbackDistance = 1.5f;
+
+    /// Slow effect duration when walking through mud/bushes
+    constexpr float MudSlowDuration = 2.0f;
+    constexpr float MudSlowAmount = 0.5f;
+
+    /// Fireball burn radius and damage
+    constexpr float FireballBurnRadius = 0.6f;
+    constexpr float FireballBurnDamagePerTick = 0.2f;
+
+    /// Lightning strike
+    constexpr float LightningStrikeRadius = 0.5f;
+    constexpr float LightningDamage = 1.0f;
+
+};

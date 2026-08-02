@@ -1,17 +1,19 @@
 #pragma once
 
 #include <glm.hpp>
+#include <memory> // <-- Add this
 
 #include "ChessPiece.h"
 #include "GroundShadow.h"
 #include "WorldObject.h"
+#include "PieceMeshFactory.h" // <-- Add this
 
 class Level;
 
 /// The player's chess pawn.
 ///
 /// GDD section 2: free top-down movement (not tile-hopping), clamped to the
-/// playable width, following the ground height of whatever lane the pawn is
+/// playable width, following the terrain height of whatever lane the pawn is
 /// currently over. Collision response (blocking, damage, knockback) is
 /// deliberately NOT handled here -- Ayub owns how the pawn moves, Kaung owns
 /// what happens when it collides with something. This class only exposes
@@ -50,6 +52,10 @@ public:
     /// freely across lanes. Call once, after both the level and the pawn
     /// have been constructed (see Game::Initialize).
     void SetLevel(const Level* level);
+
+    // --- NEW FUNCTION ---
+    void SetMeshLibrary(std::shared_ptr<PieceMeshLibrary> library);
+    // --------------------
 
     float GetMoveSpeed() const;
 
@@ -120,8 +126,33 @@ public:
     /// (currently Game) should check this every frame and act on it.
     bool ConsumeBishopActivationPulse();
 
-private:
+    /// Set the pawn's velocity directly (for knockback from collisions)
+    void SetVelocity(const glm::vec3& newVelocity) { velocity = newVelocity; }
 
+    /// Apply a slow effect to the pawn
+    void ApplySlow(float duration, float amount);
+
+    /// Get the slow multiplier (0.0 = fully slowed, 1.0 = normal speed)
+    float GetSlowMultiplier() const { return slowMultiplier; }
+
+    /// Check if the pawn is currently slowed
+    bool IsSlowed() const { return slowMultiplier < 1.0f; }
+
+    // --- NEW HP FUNCTIONS ---
+    /// Apply damage to the pawn. If health reaches 0, it respawns.
+    void TakeDamage(float damage);
+
+    /// Get the current health of the pawn.
+    float GetHealth() const { return health; }
+
+    void SetKnockback(const glm::vec3& knockbackVector, bool isCow /* = false */);
+
+    bool IsKnockedBackByCow() const { return knockedBackByCow; }
+
+    float GetKnockbackTimer() const { return knockbackTimer; }
+
+private:
+    bool knockedBackByCow = false;
     /// Turns WASD/arrow input into a normalized move direction and applies
     /// it as velocity (scaled by any active speed ability); also faces the
     /// pawn toward its movement direction and checks for an ability
@@ -150,6 +181,10 @@ private:
 
     const Level* level = nullptr;
 
+    // --- NEW MEMBER VARIABLE ---
+    std::shared_ptr<PieceMeshLibrary> meshLibrary; // To create piece meshes
+    // --------------------------
+
     float moveSpeed = 4.0f;
 
     glm::vec3 velocity = glm::vec3(0.0f);
@@ -171,4 +206,15 @@ private:
     bool shieldAvailable = false;
 
     bool bishopPulsePending = false;
+
+    float slowMultiplier = 1.0f;
+
+    float slowTimer = 0.0f;
+
+    float knockbackTimer = 0.0f;
+
+    // --- NEW HP VARIABLE ---
+    float health = 5.0f; // Pawn starts with 5 HP
+
+    glm::vec3 pawnBaseScale;
 };
