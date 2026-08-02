@@ -960,8 +960,13 @@ void Game::Render()
     if (kingsCage)
         renderer->Draw(*kingsCage);
 
+    // Through DrawPiece, not the renderer directly. The King is an animated
+    // piece, and an animated piece has no baked mesh of its own - it draws
+    // as a hierarchy of rig parts. Drawing it as a plain WorldObject asked
+    // the renderer for a null mesh, which it quietly skips, and the prisoner
+    // simply never appeared inside his cage.
     if (capturedKing)
-        renderer->Draw(*capturedKing);
+        DrawPiece(*capturedKing);
 
     if (kingsCage)
     {
