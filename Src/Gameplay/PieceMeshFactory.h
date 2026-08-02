@@ -9,19 +9,14 @@
 #include "Mesh.h"
 #include "MeshBuilder.h"
 
-/// Tonal materials the original figures were built from.
+/// Compatibility palette retained from the older mesh implementation.
 ///
-/// These are deliberately hueless. Every value is a brightness multiplier
-/// applied on top of the piece's team colour, so a white piece stays white
-/// and a black piece stays black - which is what a chess set wants - while
-/// armour, cloth, leather and steel still separate from one another.
-///
-/// Still the whole story for the pieces that have not been repainted yet.
+/// These are complete RGB colours, not brightness-only team multipliers.
 /// PieceMaterialSets::Legacy below maps every named material back onto these
-/// exact values, so those pieces render pixel for pixel as they always did.
+/// values so older callers can still request that compact material set.
 namespace PiecePalette
 {
-    /// The dominant material, left at full team colour.
+    /// The dominant warm armour colour.
     inline const glm::vec3 Armor = glm::vec3(0.87f, 0.85f, 0.82f);
 
     // The dark end is kept well clear of black on purpose. The directional
@@ -43,13 +38,13 @@ namespace PiecePalette
 /// One of these is threaded through every part builder, so a builder never
 /// names a colour of its own and the same skeleton can be painted two
 /// different ways without duplicating a line of geometry. That is what lets
-/// the repainted pieces and the ones still awaiting a pass share the code.
+/// the detailed and compatibility palettes share the same builders.
 ///
 /// The fields are deliberately finer-grained than the geometry needs today:
 /// armorLight and armorShadow, leather and leatherDark, clothBlue and
 /// clothLight all exist so a part can be split for contrast later without
-/// another struct change. In the legacy set the members of each such pair
-/// hold the same value, which is exactly why the old pieces are unaffected.
+/// another struct change. In the compatibility set the members of each such
+/// pair hold the same value to preserve its simpler shading.
 struct PieceMaterials
 {
     // Flesh and hair.
@@ -65,10 +60,8 @@ struct PieceMaterials
 
     /// Polished steel: blades, spearheads, shield plate.
     ///
-    /// Separate from armorLight because in the legacy set it has to stay on
-    /// PiecePalette::Metal - the King's sword and the Rook's shield are both
-    /// out of scope, and folding them into the plate colour would brighten
-    /// them.
+    /// Separate from armorLight so blades and shield plate can keep a steel
+    /// treatment independently of the armour colour.
     glm::vec3 blade;
 
     // Cloth worn under and around the plate.
@@ -127,11 +120,11 @@ namespace PieceMaterialSets
         glm::vec3(0.28f, 0.24f, 0.20f)    // mane
     };
 
-    /// The original hueless multipliers, one per named material.
+    /// The older compact RGB palette, one colour per named material group.
     ///
     /// Every pair that Detailed splits for contrast collapses back to a
-    /// single value here, so a piece painted with this set produces exactly
-    /// the vertex colours it did before the materials existed.
+    /// single value here, preserving the older flat-shaded treatment without
+    /// maintaining a second set of mesh-generation functions.
     inline const PieceMaterials Legacy =
     {
         PiecePalette::Skin,      // skin
@@ -227,19 +220,17 @@ namespace PieceMeshFactory
         /// them, and because "what this figure is made of" belongs with
         /// "what shape this figure is".
         ///
-        /// Defaulting to the legacy set is the safety net: a piece that has
-        /// not been repainted names no palette at all and keeps exactly the
-        /// look it had.
+        /// Defaulting to the compatibility set keeps helper callers safe;
+        /// every current detailed humanoid selects Detailed explicitly.
         PieceMaterials materials = PieceMaterialSets::Legacy;
 
         /// Whether to cut a face - eyes and a fringe of hair - into the
         /// head, and to split the plate into lit and shadowed halves.
         ///
-        /// Off by default, so the pieces still awaiting a pass keep their
-        /// current geometry exactly. It is the one place the repainted
-        /// figures add boxes rather than only colour, and they add them for
-        /// the reason the reference does: a bare skin-coloured block reads
-        /// as a thumb, not a head.
+        /// Off by default so helper callers opt into the extra geometry. It
+        /// is the one place detailed figures add boxes rather than only
+        /// colour, and they add them for the reason the reference does: a
+        /// bare skin-coloured block reads as a thumb, not a head.
         bool detailedFace = false;
 
         // Widths, measured across the figure.

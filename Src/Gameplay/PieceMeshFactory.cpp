@@ -948,8 +948,8 @@ namespace PieceMeshFactory
             0.75f, 0.83f);
 
         // Muzzle: the snout, nose and jaw drop to the darker coat tone, the
-        // way a grey horse's nose does. In the legacy set the two tones are
-        // the same value, so the mounted pawn's horse is unaffected.
+        // way a grey horse's nose does. In the compatibility set the two
+        // tones are the same value, preserving its flatter treatment.
         builder.SetColor(materials.coatShadow);
 
         AddHorseSlab(builder, 
@@ -1354,12 +1354,16 @@ namespace PieceMeshFactory
 
     bool UsesDetailedMaterials(PieceType type)
     {
-        // The pieces that have had a colour pass. Everything else is still
-        // painted from the legacy set and still wants its team tint.
+        // All seven current models now carry authored RGB vertex colours.
+        // Leave their object colour white so team tinting cannot wash out
+        // the shared material palette.
         return type == PieceType::Pawn ||
             type == PieceType::Rook ||
             type == PieceType::Knight ||
-            type == PieceType::Bishop;
+            type == PieceType::Bishop ||
+            type == PieceType::Queen ||
+            type == PieceType::King ||
+            type == PieceType::MountedPawn;
     }
 
     PieceModel Create(PieceType type)
@@ -1436,12 +1440,14 @@ namespace PieceMeshFactory
             // face down the lane and its legs straddling the saddle. Nothing
             // here is a new shape - only a new pose.
             //
-            // Out of scope for the repaint, so both halves stay on the
-            // legacy set and this piece is untouched.
+            // Reuse the Knight's detailed horse so its coat, tack, shading,
+            // and gold fittings stay consistent across both mounted models.
             const float saddleY =
-                AddHorse(builder, PieceMaterialSets::Legacy);
+                AddHorse(builder, PieceMaterialSets::Detailed);
 
             FigureSpec spec;
+            spec.materials = PieceMaterialSets::Detailed;
+            spec.detailedFace = true;
 
             // The rider faces the way the horse does. Now that the horse is
             // normalised to +Z, that is the ordinary camera facing rather
@@ -1536,6 +1542,8 @@ namespace PieceMeshFactory
             // Robe, long hair, a pointed crown, and a scepter that stands
             // taller than the crown itself.
             FigureSpec spec;
+            spec.materials = PieceMaterialSets::Detailed;
+            spec.detailedFace = true;
             spec.shoulderWidth = 0.36f;
             spec.torsoWidth = 0.27f;
             spec.armSpread = 0.175f;
@@ -1574,6 +1582,8 @@ namespace PieceMeshFactory
             // his back, a beard, a crown topped with a cross, and a sword
             // half again the pawn's.
             FigureSpec spec;
+            spec.materials = PieceMaterialSets::Detailed;
+            spec.detailedFace = true;
             spec.shoulderWidth = 0.45f;
             spec.torsoWidth = 0.32f;
             spec.torsoDepth = 0.19f;
