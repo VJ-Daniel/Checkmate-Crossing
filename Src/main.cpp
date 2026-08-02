@@ -100,6 +100,9 @@ namespace
             return false;
         }
 
+        // Clear any error that GLEW might have generated
+        glGetError();
+
         glViewport(0, 0, ScreenWidth, ScreenHeight);
 
         // Required now that the world is 3D: without it, whichever object
@@ -108,6 +111,13 @@ namespace
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Print OpenGL info for debugging
+        std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
+        std::cout << "OpenGL Vendor: " << glGetString(GL_VENDOR) << std::endl;
+        std::cout << "OpenGL Renderer: " << glGetString(GL_RENDERER) << std::endl;
+        std::cout << "Window created successfully: " << ScreenWidth << "x" << ScreenHeight << std::endl;
+
         return true;
     }
 }
@@ -129,15 +139,25 @@ int main()
         return -1;
     }
 
+    std::cout << "Game initialized. Starting main loop..." << std::endl;
+
     double previousTime = glfwGetTime();
+    int frameCount = 0;
+    bool windowVisible = true;
 
     while (!glfwWindowShouldClose(window))
     {
+        // Process window events - CRITICAL for window responsiveness
+        glfwPollEvents();
+
         Input::Update();
 
         if (Input::IsKeyPressed(Key::Escape) ||
             Input::IsGamepadButtonPressed(GamepadButton::Start))
+        {
+            std::cout << "Escape pressed, closing window..." << std::endl;
             glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
 
         const double currentTime = glfwGetTime();
         const float deltaTime = static_cast<float>(
@@ -151,11 +171,35 @@ int main()
         game.Render();
 
         glfwSwapBuffers(window);
+
+        // Debug: print frame count every 60 frames
+        frameCount++;
+        if (frameCount % 60 == 0)
+        {
+            std::cout << "Frame " << frameCount << " - Delta: " << deltaTime << "s" << std::endl;
+        }
+
+        // Check if window is still visible
+        if (frameCount == 10)
+        {
+            int windowWidth, windowHeight;
+            glfwGetWindowSize(window, &windowWidth, &windowHeight);
+            if (windowWidth == 0 || windowHeight == 0)
+            {
+                std::cout << "Warning: Window size is 0x0 - window might be minimized!" << std::endl;
+                // Restore the window if it's minimized
+                glfwRestoreWindow(window);
+            }
+        }
     }
+
+    std::cout << "Main loop ended after " << frameCount << " frames." << std::endl;
 
     game.Shutdown();
     glfwDestroyWindow(window);
     window = nullptr;
     glfwTerminate();
+
+    std::cout << "Game exited." << std::endl;
     return 0;
 }

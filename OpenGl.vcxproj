@@ -47,6 +47,8 @@
     <ClCompile Include="Src\Core\WorldObject.cpp" />
     <ClCompile Include="Src\Input\Input.cpp" />
     <ClCompile Include="Src\main.cpp" />
+    <ClCompile Include="Src\Physics\Collision.cpp" />
+    <ClCompile Include="Src\Physics\HazardCollision.cpp" />
     <ClCompile Include="Src\Resources\ResourceManager.cpp" />
     <ClCompile Include="Src\Graphics\Shader.cpp" />
     <ClCompile Include="Src\Graphics\Sprite.cpp" />
@@ -95,6 +97,8 @@
     <ClInclude Include="Src\Graphics\Texture2D.h" />
     <ClInclude Include="Src\Core\SceneNode.h" />
     <ClInclude Include="Src\Core\Transform3D.h" />
+    <ClInclude Include="Src\Physics\Collision.h" />
+    <ClInclude Include="Src\Physics\HazardCollision.h" />
     <ClInclude Include="Src\Resources\ResourceManager.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
@@ -108,7 +112,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">

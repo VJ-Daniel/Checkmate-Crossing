@@ -20,6 +20,7 @@
 #include "PieceMeshFactory.h"
 #include "Sprite.h"
 #include "SpriteRenderer.h"
+#include "HazardCollision.h"
 
 /// Owns the high-level lifetime of one Checkmate Crossing session: the
 /// camera, the world renderer, the battlefield and the player's pawn.
@@ -257,4 +258,11 @@ private:
     std::vector<std::shared_ptr<ChessPiece>> showcasePieces;
 
     std::vector<std::shared_ptr<Obstacle>> showcaseObstacles;
+
+    // Hazard Collision
+    std::unique_ptr<HazardCollision> hazardCollision;
+    std::vector<std::shared_ptr<StaticObstacle>> stationaryHazards;
+
+    /// Creates stationary hazards (spikes, walls, trees, etc.) on the battlefield
+    void CreateStationaryHazards();
 };

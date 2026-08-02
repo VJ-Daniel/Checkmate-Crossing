@@ -126,6 +126,12 @@
     <ClCompile Include="Src\Gameplay\PieceAnimator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Src\Physics\Collision.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Src\Physics\HazardCollision.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Src\Gameplay\PieceRig.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -237,6 +243,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Src\Gameplay\PieceAnimator.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Physics\Collision.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Src\Physics\HazardCollision.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Src\Gameplay\PieceRig.h">

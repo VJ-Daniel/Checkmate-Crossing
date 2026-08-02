@@ -280,4 +280,28 @@ namespace GameConfig
     /// Both King's Cage leaves use this shared opening-angle magnitude with
     /// opposite signs. Matches the checkpoint gate's 90-degree convention.
     constexpr float KingsCageMaxDoorAngle = 90.0f;
+
+
+    // Collision Configuration
+    //
+    //---------------------------------------------------------
+    
+    // Time after taking damage before the pawn can be damaged again
+    constexpr float DamageCooldown = 0.5f;
+
+    // How far the pawn is knocked back when hit
+    constexpr float KnockbackDistance = 1.5f;
+
+    /// Slow effect duration when walking through mud/bushes
+    constexpr float MudSlowDuration = 2.0f;
+    constexpr float MudSlowAmount = 0.5f;
+
+    /// Fireball burn radius and damage
+    constexpr float FireballBurnRadius = 0.6f;
+    constexpr float FireballBurnDamagePerTick = 0.2f;
+
+    /// Lightning strike
+    constexpr float LightningStrikeRadius = 0.5f;
+    constexpr float LightningDamage = 1.0f;
 }
+

@@ -17,6 +17,7 @@
 #include "ResourceManager.h"
 #include "SceneNode.h"
 #include "Shader.h"
+#include <iostream>  // For debug output
 
 namespace
 {
@@ -167,25 +168,78 @@ bool Game::Initialize(
 
     spriteRenderer->SetScreenSize(screenWidth, screenHeight);
 
+    // 1. Create the libraries FIRST before anything else uses them.
+    pieceMeshes = std::make_shared<PieceMeshLibrary>();
+
+    obstacleMeshes = std::make_shared<ObstacleMeshLibrary>();
+    gateMeshes = std::make_shared<GateMeshLibrary>();
+    cageMeshes = std::make_shared<CageMeshLibrary>();
+
+    // 2. Build the level
     level = std::make_shared<Level>();
     level->Build();
 
+    // 3. Create the pawn
     pawn = std::make_shared<Pawn>();
     pawn->SetSpawnPosition(level->GetPlayerSpawnPosition());
     pawn->Initialize();
 
-    // NOTE(Ayub): required for the pawn's free movement to follow each
-    // lane's terrain height. Non-owning; Level outlives Pawn here.
+    // 4. Give the pawn the level (for terrain height)
     pawn->SetLevel(level.get());
 
-    pieceMeshes = std::make_shared<PieceMeshLibrary>();
+    // 5. NOW give the pawn the mesh library (which is valid because we created it in Step 1)
+    pawn->SetMeshLibrary(pieceMeshes);
 
-    // After the mesh library exists, and after the pawn: the rig shares the
-    // library's meshes, so neither can be created before the other.
+    // The rig shares the library's meshes, so it can only be attached once
+    // both the library and the pawn exist. The merge had reordered these:
+    // Kaung moved library creation to the top of Initialize, which left this
+    // call sitting above the line that creates the pawn.
     pawn->AttachRig(*pieceMeshes);
-    obstacleMeshes = std::make_shared<ObstacleMeshLibrary>();
-    gateMeshes = std::make_shared<GateMeshLibrary>();
-    cageMeshes = std::make_shared<CageMeshLibrary>();
+
+    // ---- Initialize Hazard Collision ----
+    hazardCollision = std::make_unique<HazardCollision>(*pawn);
+
+    // 1. Damage callback
+    hazardCollision->onDamageTaken = [this](float damage, const glm::vec3& direction) {
+        // ULTIMATE SAFETY CHECK: Block damage if the pawn was knocked back by the Cow
+        if (pawn->IsKnockedBackByCow())
+        {
+            return; // The Cow pushed you. You are IMMUNE to damage!
+        }
+
+        pawn->TakeDamage(damage);
+
+        // Apply knockback (keep your existing code)
+        glm::vec3 currentVel = pawn->GetVelocity();
+        glm::vec3 knockback = direction * GameConfig::KnockbackDistance;
+        if (glm::length(knockback) > 0.01f) {
+            pawn->SetVelocity(currentVel + knockback);
+        }
+        };
+
+    // 2. Knockback callback (Takes TWO arguments now!)
+    hazardCollision->onKnockback = [this](const glm::vec3& knockback, bool isCow) {
+        // Forward the knockback to the pawn, passing along the "isCow" flag
+        pawn->SetKnockback(knockback, isCow);
+        };
+
+    hazardCollision->onBlocked = [this](const glm::vec3& position) {
+        pawn->GetTransform().SetPosition(position);
+        // Stop velocity when blocked
+        pawn->SetVelocity(glm::vec3(0.0f));
+        };
+
+    hazardCollision->onSlowApplied = [this](float duration, float amount, bool linger) {
+        if (linger == false && duration == 0.0f) {
+            duration = 0.5f; // Minimum time so the timer registers!
+        }
+        // --------------------------
+
+        pawn->ApplySlow(duration, amount);
+        };
+
+    // ---- Create Stationary Hazards ----
+    CreateStationaryHazards();
 
     BuildCheckpointGate();
     BuildKingsCage();
@@ -193,13 +247,19 @@ bool Game::Initialize(
     hazardManager = std::make_shared<HazardManager>(*obstacleMeshes);
     collectibleManager = std::make_shared<CollectibleManager>(*pieceMeshes);
 
-    BuildShowcase();
+    // ---------------------------------------------------------
+    // REMOVED: BuildShowcase(); 
+    // We don't want the pre-made showcase obstacles anymore.
+    // ---------------------------------------------------------
+
     SpawnExampleHazards();
     SpawnExampleCollectibles();
 
     // Frame the pawn before the first frame is drawn, so it is already in
     // view the moment the window opens.
     UpdateCamera();
+
+    std::cout << "Game initialized with " << stationaryHazards.size() << " stationary hazards." << std::endl;
 
     return true;
 }
@@ -333,8 +393,7 @@ void Game::BuildShowcase()
                 HazardSpacing));
 
         showcaseObstacles.push_back(hazard);
-    }
-}
+    }}
 
 void Game::BuildCheckpointGate()
 {
@@ -352,16 +411,52 @@ void Game::BuildCheckpointGate()
 
     checkpointGate->Build(*gateMeshes);
 
-    // Centred on the board and standing on the checkpoint lane's own
-    // surface, so the wall run crosses the level exactly where the GDD puts
-    // the checkpoint rather than at an assumed height.
+    // Centred on the board and standing on the checkpoint lane's own surface.
     checkpointGate->SetGroundPosition(
         glm::vec3(
             0.0f,
             lane->GetSurfaceHeight(),
             lane->GetCenterZ()));
-}
 
+    // =========================================================
+    // BLOCK THE ENTIRE GREY WALL (LEFT AND RIGHT OF THE DOOR)
+    // =========================================================
+    const float gateZ = lane->GetCenterZ();
+    const float gateY = lane->GetSurfaceHeight();
+    const float doorWidth = 1.2f; // The width of the open door
+
+    // Helper to create an invisible wall using your AddObstacle logic
+    auto AddInvisibleWall = [&](float xPos, float width) {
+        // Create the obstacle directly
+        auto wall = obstacleMeshes->CreateObstacle(ObstacleType::Wall);
+
+        // Make it invisible and as tall as the gate
+        wall->SetColor(glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+        wall->SetDimensions(3.5f, width, 0.8f); // 3.5 tall, custom width
+
+        // Place it perfectly over the stone wall
+        wall->SetGroundPosition(glm::vec3(xPos, gateY, gateZ + 0.3f)); // Slightly forward to overlap
+        wall->SetShadowVisible(false);
+        wall->Initialize();
+
+        stationaryHazards.push_back(wall);
+        };
+
+    // LEFT WALL: Covers everything to the left of the door
+    // We place it at the exact midpoint between the door edge and the left map edge
+    float leftWallCenter = -doorWidth * 0.5f - 5.0f;
+    AddInvisibleWall(leftWallCenter, 10.0f);
+
+    // RIGHT WALL: Covers everything to the right of the door
+    // We place it at the exact midpoint between the door edge and the right map edge
+    float rightWallCenter = doorWidth * 0.5f + 5.0f;
+    AddInvisibleWall(rightWallCenter, 10.0f);
+
+    // =========================================================
+    // NOTE: The center gap (-0.6f to 0.6f) is left EMPTY for the door.
+    // You will walk right through the door, but the stone walls will stop you!
+    // =========================================================
+}
 void Game::BuildKingsCage()
 {
     if (!level || !pieceMeshes || !cageMeshes)
@@ -416,6 +511,66 @@ void Game::BuildKingsCage()
         glm::vec3(0.0f, KingsCage::GetFloorHeight(), 0.0f));
 }
 
+void Game::CreateStationaryHazards()
+{
+    if (!level || !obstacleMeshes)
+        return;
+
+    stationaryHazards.clear();
+
+    const float halfWidth = Level::GetPlayableHalfWidth();
+    const int spawnRow = level->GetSpawnRow();
+
+    // Helper lambda to safely add stationary obstacles
+    auto AddObstacle = [&](ObstacleType type, int rowOffset, float xOffset, float zOffset = 0.0f) {
+        int row = spawnRow + rowOffset;
+        if (const Lane* lane = level->GetLane(row))
+        {
+            const float y = lane->GetSurfaceHeight();
+            const float z = lane->GetCenterZ();
+
+            auto obstacle = obstacleMeshes->CreateObstacle(type);
+            obstacle->SetGroundPosition(glm::vec3(xOffset, y, z + zOffset));
+            obstacle->Initialize();
+            stationaryHazards.push_back(obstacle);
+        }
+        };
+
+    // ==========================================
+    // LEFT LANE (x = -1.0) - Damage & Slow Testing
+    // ==========================================
+
+    // 1. SPIKES: Damage + Knockback (2 lanes ahead)
+    AddObstacle(ObstacleType::Spikes, 2, -1.0f, 0.0f);
+
+    // 2. MUD: Slows while inside + Lingers 2 seconds (3 lanes ahead)
+    AddObstacle(ObstacleType::Mud, 3, -1.0f, 0.0f);
+
+    // 3. BUSHES: Slows only while inside (4 lanes ahead)
+    AddObstacle(ObstacleType::Bush, 4, -1.0f, 0.0f);
+
+    // ==========================================
+    // RIGHT LANE (x = 1.0) - Jumping Testing
+    // ==========================================
+
+    // 4. ROCK: Block movement, can be jumped over (5 lanes ahead)
+    AddObstacle(ObstacleType::Rock, 5, 1.0f, 0.0f);
+
+    // 5. FENCE: Block, Jumpable, Breakable (6 lanes ahead)
+    AddObstacle(ObstacleType::Fence, 6, 1.0f, 0.0f);
+
+    // 6. PALISADE: Jump over = Damage (7 lanes ahead)
+    AddObstacle(ObstacleType::Palisade, 7, 1.0f, 0.0f);
+
+    // 7. WALL: Completely Block, Unbreakable (8 lanes ahead)
+    AddObstacle(ObstacleType::Wall, 8, 1.0f, 0.0f);
+
+    // 8. TREE: Completely Block (9 lanes ahead)
+    AddObstacle(ObstacleType::Tree, 9, 1.0f, 0.0f);
+
+    std::cout << "Created " << stationaryHazards.size() << " stationary hazards for testing." << std::endl;
+}
+
 void Game::SpawnExampleHazards()
 {
     if (!level || !hazardManager)
@@ -445,8 +600,6 @@ void Game::SpawnExampleHazards()
 
     // Spear: "similar speed to arrows, but curved trajectory." Each flight
     // is one-shot, so a repeating spawner keeps a new one coming.
-    // NOTE(Ayub/Liyuu): no dedicated Spear lane exists in Level 1 yet --
-    // placed in a SafeGrass row purely so it's visible for testing.
     {
         const int row = level->GetSpawnRow() + 5;
 
@@ -497,13 +650,8 @@ void Game::SpawnExampleHazards()
 
     // Rolling Rock / Rolling Log: the GDD calls both "vertical"
     // projectiles, meaning they roll along a lane's depth (Z), not
-    // sideways across it like arrows/cannonballs. Neither has a
-    // dedicated lane in Level 1 yet, so these roll through a short span
-    // of SafeGrass rows purely for testing.
+    // sideways across it like arrows/cannonballs.
     {
-        // Keep the moving previews beyond the three static showcase rows
-        // (+2, +4, +6), so they demonstrate motion without passing through
-        // the obstacle and hazard displays.
         const int startRow = level->GetSpawnRow() + 7;
         const int endRow = level->GetSpawnRow() + 9;
 
@@ -513,7 +661,6 @@ void Game::SpawnExampleHazards()
             const float startZ = Level::RowToWorldZ(startRow);
             const float endZ = Level::RowToWorldZ(endRow);
 
-            // "A slow vertical projectile with a large hit area."
             hazardManager->RegisterRepeatingSpawn(
                 4.0f,
                 [this, y, startZ, endZ]()
@@ -526,7 +673,6 @@ void Game::SpawnExampleHazards()
                         false);
                 });
 
-            // "Similar to the rolling rock, but faster."
             hazardManager->RegisterRepeatingSpawn(
                 3.0f,
                 [this, y, startZ, endZ]()
@@ -541,18 +687,21 @@ void Game::SpawnExampleHazards()
         }
     }
 
-    // Cow: chases the pawn indefinitely from just ahead of the start area.
-    // It follows continuously on its own, so it needs no repeat spawner.
+    // =========================================================
+    // REMOVED: The Cow
+    // =========================================================
+    /*
     {
         const int row = level->GetSpawnRow() + 15;
 
         if (const Lane* lane = level->GetLane(row))
         {
-            hazardManager->SpawnCow(
-                glm::vec3(halfWidth * 0.6f, lane->GetSurfaceHeight(), lane->GetCenterZ()),
-                2.5f);
+           hazardManager->SpawnCow(
+               glm::vec3(halfWidth * 0.6f, lane->GetSurfaceHeight(), lane->GetCenterZ()),
+               2.5f);
         }
     }
+    */
 }
 
 void Game::SpawnExampleCollectibles()
@@ -563,7 +712,6 @@ void Game::SpawnExampleCollectibles()
     const float halfWidth = Level::GetPlayableHalfWidth();
 
     // One of each ally, spaced out through the safe lanes near the start
-    // so all four are easy to test without dodging every hazard first.
     const PieceType allies[4] =
     {
         PieceType::Bishop,
@@ -578,13 +726,10 @@ void Game::SpawnExampleCollectibles()
 
         if (const Lane* lane = level->GetLane(row))
         {
-            const float x = (index % 2 == 0)
-                ? halfWidth * 0.35f
-                : -halfWidth * 0.35f;
-
+            // MOVED TO CENTER (x = 0.0f) so you walk straight into them
             collectibleManager->Spawn(
                 allies[index],
-                glm::vec3(x, lane->GetSurfaceHeight(), lane->GetCenterZ()));
+                glm::vec3(0.0f, lane->GetSurfaceHeight(), lane->GetCenterZ()));
         }
     }
 
@@ -790,8 +935,16 @@ void Game::Update(float deltaTime)
     if (hazardManager && pawn)
         hazardManager->Update(deltaTime, pawn->GetTransform().GetPosition());
 
-    // TEMPORARY: stands in for Kaung's real collision detection. Delete
-    // once his system calls Pawn::CollectPiece(...) directly on overlap.
+    // ---- Update Hazard Collision ----
+    if (hazardCollision)
+    {
+        hazardCollision->Update(
+            hazardManager->GetHazards(),
+            stationaryHazards,
+            deltaTime);
+    }
+
+    // TEMPORARY: stands in for Kaung's real collision detection.
     if (collectibleManager && pawn)
     {
         PieceType collectedType = PieceType::Pawn;
@@ -805,9 +958,7 @@ void Game::Update(float deltaTime)
         }
     }
 
-    // Bishop's ability mutates the world (removing nearby hazards), which
-    // is why Pawn only raises a pulse instead of doing this itself -- see
-    // the note on ConsumeBishopActivationPulse().
+    // Bishop's ability mutates the world (removing nearby hazards)
     if (pawn && pawn->ConsumeBishopActivationPulse() && hazardManager)
     {
         hazardManager->RemoveNearest(
@@ -902,18 +1053,19 @@ void Game::Render()
         }
     }
 
+    // ---- SHADOWS ----
     // Every shadow before every model: shadows are translucent and have to
     // blend over ground that has already been drawn.
-    for (const auto& piece : showcasePieces)
-    {
-        if (piece)
-            renderer->Draw(piece->GetShadow());
-    }
 
-    for (const auto& obstacle : showcaseObstacles)
+    // ---------------------------------------------------------
+    // REMOVED: showcasePieces and showcaseObstacles shadows
+    // ---------------------------------------------------------
+
+    // Stationary hazard shadows
+    for (const auto& hazard : stationaryHazards)
     {
-        if (obstacle)
-            renderer->Draw(obstacle->GetShadow());
+        if (hazard)
+            renderer->Draw(hazard->GetShadow());
     }
 
     if (checkpointGate)
@@ -943,9 +1095,10 @@ void Game::Render()
     if (pawn)
         renderer->Draw(pawn->GetShadow());
 
+    // ---- MODELS ----
+
     // The gate is several meshes rather than one, because its two leaves
-    // turn on their own hinges. The renderer neither knows nor cares: each
-    // part is an ordinary WorldObject carrying its own transform.
+    // turn on their own hinges.
     if (checkpointGate)
     {
         for (const auto& part : checkpointGate->GetParts())
@@ -956,8 +1109,7 @@ void Game::Render()
     }
 
     // The frame is the cage's root mesh. Each barred leaf is a separate
-    // object with its origin on its outer hinge.
-    if (kingsCage)
+    // object with its origin on its outer hinge.    if (kingsCage)
         renderer->Draw(*kingsCage);
 
     // Through DrawPiece, not the renderer directly. The King is an animated
@@ -979,11 +1131,11 @@ void Game::Render()
 
     for (const auto& piece : showcasePieces)
         DrawPiece(*piece);
-
-    for (const auto& obstacle : showcaseObstacles)
+    // Stationary hazards (spikes, walls, fences, trees, rocks, bushes, palisades)
+    for (const auto& hazard : stationaryHazards)
     {
-        if (obstacle)
-            renderer->Draw(*obstacle);
+        if (hazard)
+            renderer->Draw(*hazard);
     }
 
     if (hazardManager)
@@ -1005,11 +1157,6 @@ void Game::Render()
         DrawPawn();
 
     // Sprites last, after every opaque mesh.
-    //
-    // They are transparent and do not write depth, so anything drawn after
-    // them would ignore them and punch straight through. DrawAll brackets its
-    // own GL state and returns immediately while the list is empty, which it
-    // is until sprite assets exist.
     if (spriteRenderer)
         spriteRenderer->DrawAll(sprites);
 }
@@ -1076,6 +1223,7 @@ void Game::Shutdown()
     // buffer has to be released while the GL context is still alive.
     showcasePieces.clear();
     showcaseObstacles.clear();
+    stationaryHazards.clear();
     capturedKing.reset();
     kingsCage.reset();
     checkpointGate.reset();
@@ -1092,17 +1240,16 @@ void Game::Shutdown()
         collectibleManager.reset();
     }
 
+    hazardCollision.reset();
+
     pieceMeshes.reset();
     obstacleMeshes.reset();
     cageMeshes.reset();
     gateMeshes.reset();
 
     pawn.reset();
-
     level.reset();
-
     renderer.reset();
-
     camera.reset();
     cameraFollowInitialized = false;
 

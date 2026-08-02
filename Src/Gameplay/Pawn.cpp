@@ -18,6 +18,7 @@
 #include "Pawn.h"
 
 #include <cmath>
+#include <iostream> // Added for debug output
 
 #include "GameConfig.h"
 #include "Input.h"
@@ -91,11 +92,27 @@ void Pawn::Initialize()
 
     transform.SetRotation(0.0f, 0.0f, 0.0f);
 
+    // Store the base scale so we can revert to it if needed
+    pawnBaseScale = transform.GetScale();
+
     Respawn();
 }
 
 void Pawn::Update(float deltaTime)
 {
+    // Mud and bushes slow the pawn for a while after it walks through them.
+    if (slowTimer > 0.0f)
+    {
+        slowTimer -= deltaTime;
+
+        if (slowTimer <= 0.0f)
+            slowMultiplier = 1.0f;
+    }
+
+    // A hit pushes the pawn for a moment, during which input is ignored.
+    if (knockbackTimer > 0.0f)
+        knockbackTimer -= deltaTime;
+
     HandleInput();
 
     UpdateJump(deltaTime);
@@ -103,7 +120,11 @@ void Pawn::Update(float deltaTime)
     UpdateAbility(deltaTime);
 
     glm::vec3 position = transform.GetPosition();
-    position += velocity * deltaTime;
+
+    // The slow scales the whole step rather than the stored velocity, so
+    // GetVelocity still reports what the pawn is trying to do and the
+    // animation stride does not stall along with it.
+    position += velocity * slowMultiplier * deltaTime;
 
     // Resolve the complete X/Z footprint against one continuous playable
     // rectangle. This is equivalent to four gapless boundary colliders, but
@@ -119,6 +140,7 @@ void Pawn::Update(float deltaTime)
         const float halfFootprint = (footprintRadius > 0.0f)
             ? footprintRadius
             : GameConfig::PawnWidth * 0.5f;
+
         const glm::vec3 resolved = level->ClampToPlayableBounds(
             position,
             halfFootprint,
@@ -155,13 +177,33 @@ void Pawn::Update(float deltaTime)
     UpdateAnimation(deltaTime);
 }
 
+
+void Pawn::SetMeshLibrary(std::shared_ptr<PieceMeshLibrary> library)
+{
+    meshLibrary = library;
+}
+// ---------------------------------
+
 void Pawn::HandleInput()
 {
     const glm::vec3 direction = ReadMoveDirection();
 
-    velocity = direction * moveSpeed * GetSpeedMultiplier();
+    // Knockback overrides input while it lasts, so a hit actually pushes the
+    // pawn instead of being cancelled by whatever key is held.
+    if (knockbackTimer <= 0.0f)
+    {
+        velocity = direction * moveSpeed * GetSpeedMultiplier();
+    }
+    else
+    {
+        // Bleed the bounce off smoothly rather than stopping dead.
+        velocity *= 0.95f;
 
-    if (glm::length(direction) > 0.0f)
+        if (glm::length(velocity) < 0.01f)
+            velocity = glm::vec3(0.0f);
+    }
+
+    if (glm::length(direction) > 0.0f && knockbackTimer <= 0.0f)
     {
         // Y-heading toward the movement direction.
         //
@@ -170,16 +212,19 @@ void Pawn::HandleInput()
         // (sin theta, 0, cos theta). Pointing that at the travel direction
         // is therefore atan2(x, z), with no negation on either term.
         //
-        // The negated Z this replaced dated from when the pawn was a cube
-        // with no visible front, and inverted forward against backward
-        // while leaving left and right correct - which is exactly how the
-        // bug presented once the cube became a real model.
+        // The negated Z is the orientation bug that was fixed after Kaung
+        // branched: it inverted forward against backward while leaving left
+        // and right correct.
         const float headingDegrees =
             glm::degrees(std::atan2(direction.x, direction.z));
 
         transform.SetRotation(0.0f, headingDegrees, 0.0f);
     }
 
+    // Space jumps. Kaung's branch had repurposed it to fire abilities,
+    // because it predates the jump landing on the shared branch - but E
+    // already resolves abilities (see ConsumeInteractPulse), and removing
+    // the jump would take Ayub's movement and the jump animations with it.
     const bool spaceDown = Input::IsKeyPressed(Key::Space);
 
     if (spaceDown && !spaceKeyWasDown)
@@ -198,6 +243,7 @@ void Pawn::HandleInput()
 
     interactKeyWasDown = interactDown;
 }
+
 
 void Pawn::ApplyTerrainHeight()
 {
@@ -429,8 +475,7 @@ bool Pawn::ConsumeInteractPulse()
 
 void Pawn::CollectPiece(PieceType type)
 {
-    // Only the four collectible allies make sense here; Pawn/King/
-    // MountedPawn are never placed as field collectibles.
+    // Only the four collectible allies make sense here.
     if (type != PieceType::Bishop &&
         type != PieceType::Knight &&
         type != PieceType::Rook &&
@@ -439,11 +484,31 @@ void Pawn::CollectPiece(PieceType type)
         return;
     }
 
-    // Only one banked ability at a time, matching the GDD's single
-    // "stored chess ability" slot -- picking up a new one overwrites
-    // whatever was previously held and unused.
+    // Store the ability
     hasStoredPiece = true;
     storedPieceType = type;
+
+    // =========================================================
+    // THE FIX: SWAP THE MESH TO THE COLLECTED PIECE!
+    // =========================================================
+    if (meshLibrary)
+    {
+        // Create a temporary chess piece model
+        auto newMesh = meshLibrary->CreatePiece(type, PieceTeam::White);
+
+        // Steal its mesh and apply it to our pawn
+        SetMesh(newMesh->GetMesh());
+
+        // Set the team color of the piece
+        SetColor(newMesh->GetColor());
+
+        // Resize it to fit the pawn's scale
+        float pieceScale = GameConfig::PieceScale;
+        transform.SetScale(pieceScale, pieceScale, pieceScale);
+    }
+    // =========================================================
+
+    std::cout << "Pawn transformed into a " << GetPieceTypeName(type) << "!" << std::endl;
 }
 
 bool Pawn::HasStoredPiece() const
@@ -639,6 +704,25 @@ void Pawn::Respawn()
         spawnPosition.y + GameConfig::PawnHeight * 0.5f,
         spawnPosition.z);
 
+    // --- RESET HEALTH ON RESPAWN ---
+    health = 5.0f;
+    // --- CLEAR KNOCKBACK ---
+    velocity = glm::vec3(0.0f);
+    knockbackTimer = 0.0f;
+    // ------------------------------
+
+    // =========================================
+    // REVERT MESH, SIZE, AND COLOR BACK TO NORMAL
+    // =========================================
+    SetMesh(Mesh::CreateCube()); // <-- Change back to a cube
+    SetColor(GameConfig::PawnColor); // Revert to original white color
+    transform.SetScale(
+        GameConfig::PawnWidth,
+        GameConfig::PawnHeight,
+        GameConfig::PawnWidth
+    );
+    // =========================================
+
     UpdateShadow();
 }
 
@@ -653,4 +737,40 @@ void Pawn::UpdateShadow()
 
     shadow.PlaceOn(
         glm::vec3(position.x, groundHeight, position.z));
+}
+
+void Pawn::ApplySlow(float duration, float amount)
+{
+    float newMultiplier = 1.0f - amount;
+    if (newMultiplier < slowMultiplier) slowMultiplier = newMultiplier;
+    slowTimer = std::max(slowTimer, duration);
+
+    // DEBUG LINE:
+    std::cout << "Slow Applied! Multiplier: " << slowMultiplier << " | Timer: " << slowTimer << "s" << std::endl;
+}
+
+// --- TAKE DAMAGE FUNCTION ---
+void Pawn::TakeDamage(float damage)
+{
+    health -= damage;
+
+    // Print to console for debugging
+    std::cout << "Pawn took " << damage << " damage! HP: " << health << std::endl;
+
+    if (health <= 0.0f)
+    {
+        health = 0.0f;
+        std::cout << "Pawn has died! Respawning..." << std::endl;
+        Respawn();
+    }
+}
+
+void Pawn::SetKnockback(const glm::vec3& knockbackVector, bool isCow /* = false */)
+{
+    // This function is called by the collision system via the onKnockback callback.
+    velocity += knockbackVector;
+    knockbackTimer = 0.35f; // Prevent input for 0.35 seconds
+
+    // Store who knocked us back
+    knockedBackByCow = isCow;
 }
