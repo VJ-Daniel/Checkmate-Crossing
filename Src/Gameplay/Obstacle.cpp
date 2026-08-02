@@ -23,7 +23,8 @@ ObstacleType ObstacleTypeFromIndex(int index)
     case 4:  return ObstacleType::Bush;
     case 5:  return ObstacleType::Spikes;
     case 6:  return ObstacleType::Cow;
-    default: return ObstacleType::Palisade;
+    case 7:  return ObstacleType::Palisade;
+    default: return ObstacleType::Mud;
     }
 }
 
@@ -53,6 +54,7 @@ const char* GetObstacleTypeName(ObstacleType type)
     case ObstacleType::Spikes:   return "Spikes";
     case ObstacleType::Cow:      return "Cow";
     case ObstacleType::Palisade: return "Palisade";
+    case ObstacleType::Mud:      return "Mud";
     }
 
     return "Unknown";

@@ -16,7 +16,8 @@ enum class ObstacleType
     Bush,
     Spikes,
     Cow,
-    Palisade
+    Palisade,
+    Mud
 };
 
 /// Moving-hazard identifiers from GDD section 2.
@@ -36,7 +37,7 @@ enum class HazardType
     Lightning
 };
 
-constexpr int ObstacleTypeCount = 8;
+constexpr int ObstacleTypeCount = 9;
 
 constexpr int HazardTypeCount = 7;
 

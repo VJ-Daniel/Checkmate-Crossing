@@ -20,37 +20,34 @@
 
 namespace
 {
-    // TEMPORARY showcase settings. See Game::BuildShowcase.
-    //
-    // Three rows, two lanes apart, ordered by height: the tall rows have to
-    // sit nearer the camera because the far end of the view runs out of
-    // vertical room, and a tall row would be cut off at the top.
-    //
-    // That ordering also decides the occlusion. A prop of height h hides the
-    // ground for about h / tan(pitch) behind it, which at 35 degrees is
-    // roughly 1.4 h - so a 1.55 tall tree blots out the next two lanes. The
-    // stationary row survives this only because its two tall entries, the
-    // tree and the palisade, sit at the far ends of the row where no hazard
-    // is placed behind them.
+    /// Consecutive lanes of one type, in row order. Generalizes the
+    /// "walk forward while the next lane still matches" pattern used by
+    /// Game::BuildKingsCage, so each BuildLevel* method below can grab a
+    /// whole section's rows in one call instead of repeating that loop.
+    std::vector<const Lane*> FindConsecutiveRowsOfType(
+        const Level& level,
+        LaneType type)
+    {
+        std::vector<const Lane*> rows;
 
-    constexpr int PieceRowLanesAhead = 2;
-    constexpr int ObstacleRowLanesAhead = 4;
-    constexpr int HazardRowLanesAhead = 6;
+        const int first = level.FindRowOfType(type);
 
-    /// Seven pieces now that the mounted pawn joined them, two of which are
-    /// horses reaching about 0.58 forward from their slot.
-    ///
-    /// 1.2 puts the outer slots at 3.6, so the mounted pawn's nose stops
-    /// around 4.18. At 1.35 it reached 4.63 and buried itself in the nearest
-    /// border decoration, whose inner edge can fall as low as 4.33.
-    constexpr float PieceSpacing = 1.2f;
+        if (first < 0)
+            return rows;
 
-    /// Eight props is the widest row. A spacing of 1.0 keeps the tree and
-    /// palisade at about +/-3.5, with their outer edges near +/-4.0 and clear
-    /// of the border-decoration band that begins at x = 4.8.
-    constexpr float ObstacleSpacing = 1.0f;
+        int row = first;
 
-    constexpr float HazardSpacing = 1.6f;
+        while (const Lane* lane = level.GetLane(row))
+        {
+            if (lane->GetType() != type)
+                break;
+
+            rows.push_back(lane);
+            ++row;
+        }
+
+        return rows;
+    }
 
     /// Which way a piece is turned when it is only being displayed.
     ///
@@ -193,9 +190,9 @@ bool Game::Initialize(
     hazardManager = std::make_shared<HazardManager>(*obstacleMeshes);
     collectibleManager = std::make_shared<CollectibleManager>(*pieceMeshes);
 
-    BuildShowcase();
-    SpawnExampleHazards();
-    SpawnExampleCollectibles();
+    BuildLevelObstacles();
+    BuildLevelHazards();
+    BuildLevelCollectibles();
 
     // Frame the pawn before the first frame is drawn, so it is already in
     // view the moment the window opens.
@@ -224,116 +221,6 @@ void Game::ConfigureCamera()
     camera->SetClipPlanes(
         GameConfig::CameraNearPlane,
         GameConfig::CameraFarPlane);
-}
-
-glm::vec3 Game::GetShowcaseSlot(
-    int lanesAhead,
-    int slot,
-    int slotCount,
-    float spacing) const
-{
-    const int row = level->GetSpawnRow() + lanesAhead;
-
-    // Stand the row on a real lane, so it rests on that lane's surface
-    // rather than on an assumed height.
-    const Lane* lane = level->GetLane(row);
-
-    const float surface = lane
-        ? lane->GetSurfaceHeight()
-        : GameConfig::GroundSurface;
-
-    const float firstX =
-        -spacing * static_cast<float>(slotCount - 1) * 0.5f;
-
-    return glm::vec3(
-        firstX + spacing * static_cast<float>(slot),
-        surface,
-        Level::RowToWorldZ(row));
-}
-
-void Game::BuildShowcase()
-{
-    if (!level || !pieceMeshes || !obstacleMeshes)
-        return;
-
-    showcasePieces.clear();
-    showcaseObstacles.clear();
-
-    for (int index = 0; index < PieceTypeCount; ++index)
-    {
-        auto piece = pieceMeshes->CreatePiece(
-            PieceTypeFromIndex(index),
-            PieceTeam::White);
-
-        piece->SetGroundPosition(
-            GetShowcaseSlot(
-                PieceRowLanesAhead,
-                index,
-                PieceTypeCount,
-                PieceSpacing));
-
-        piece->SetHeadingDegrees(
-            PieceDisplayHeadingDegrees(piece->GetType()));
-
-        showcasePieces.push_back(piece);
-    }
-
-    // Stationary props, in the order the enum lists them. That order puts
-    // the tree and the palisade - the only two tall enough to hide the row
-    // behind them - at the far ends, clear of the hazards.
-    for (int index = 0; index < ObstacleTypeCount; ++index)
-    {
-        auto obstacle = obstacleMeshes->CreateObstacle(
-            ObstacleTypeFromIndex(index));
-
-        glm::vec3 position = GetShowcaseSlot(
-            ObstacleRowLanesAhead,
-            index,
-            ObstacleTypeCount,
-            ObstacleSpacing);
-
-        // The cow faces the palisade and its head projects beyond its body's
-        // logical origin. Give that pair an intentional gap while keeping
-        // both outer assets clear of the decorative border.
-        if (obstacle->GetType() == ObstacleType::Cow)
-            position.x -= 0.12f;
-
-        obstacle->SetGroundPosition(position);
-
-        showcaseObstacles.push_back(obstacle);
-    }
-
-    // Hazards last, furthest away: their models are the shortest, and the
-    // far end of the view has the least vertical room. Fireball and Lightning
-    // are logical gameplay types only until their sprite visuals arrive, so
-    // they are intentionally absent from this 3D showcase.
-    std::vector<std::shared_ptr<Hazard>> showcaseHazards;
-
-    for (int index = 0; index < HazardTypeCount; ++index)
-    {
-        auto hazard = obstacleMeshes->CreateHazard(
-            HazardTypeFromIndex(index));
-
-        if (hazard && hazard->GetMesh())
-            showcaseHazards.push_back(hazard);
-    }
-
-    const int showcaseHazardCount =
-        static_cast<int>(showcaseHazards.size());
-
-    for (int index = 0; index < showcaseHazardCount; ++index)
-    {
-        auto& hazard = showcaseHazards[index];
-
-        hazard->SetGroundPosition(
-            GetShowcaseSlot(
-                HazardRowLanesAhead,
-                index,
-                showcaseHazardCount,
-                HazardSpacing));
-
-        showcaseObstacles.push_back(hazard);
-    }
 }
 
 void Game::BuildCheckpointGate()
@@ -416,24 +303,105 @@ void Game::BuildKingsCage()
         glm::vec3(0.0f, KingsCage::GetFloorHeight(), 0.0f));
 }
 
-void Game::SpawnExampleHazards()
+void Game::BuildLevelObstacles()
+{
+    if (!level || !obstacleMeshes)
+        return;
+
+    levelObstacles.clear();
+
+    const float halfWidth = Level::GetPlayableHalfWidth();
+
+    auto place = [this](ObstacleType type, float x, const Lane& lane)
+    {
+        auto obstacle = obstacleMeshes->CreateObstacle(type);
+
+        obstacle->SetGroundPosition(
+            glm::vec3(x, lane.GetSurfaceHeight(), lane.GetCenterZ()));
+
+        levelObstacles.push_back(obstacle);
+    };
+
+    // SpikeMud section (3 rows): Spikes and Mud alternate left/right down
+    // the section, per the GDD's own "[S] [M]     [S]     [M] [S]" map, so
+    // no two consecutive rows block the same corridor.
+    {
+        auto rows = FindConsecutiveRowsOfType(*level, LaneType::SpikeMud);
+
+        if (rows.size() >= 1 && rows[0])
+        {
+            place(ObstacleType::Spikes, -halfWidth * 0.55f, *rows[0]);
+            place(ObstacleType::Mud,     halfWidth * 0.24f, *rows[0]);
+        }
+
+        if (rows.size() >= 2 && rows[1])
+        {
+            place(ObstacleType::Mud,    -halfWidth * 0.24f, *rows[1]);
+            place(ObstacleType::Spikes,  halfWidth * 0.55f, *rows[1]);
+        }
+
+        if (rows.size() >= 3 && rows[2])
+        {
+            place(ObstacleType::Spikes, -halfWidth * 0.70f, *rows[2]);
+            place(ObstacleType::Mud,    -halfWidth * 0.35f, *rows[2]);
+            // Right half of this row stays clear.
+        }
+    }
+
+    // FenceTree section (3 rows): the GDD's top-down map names exactly
+    // Tree/Fence/Rock/Wall for this section; Palisade and Bush fill the
+    // third row since the obstacle set has more props than the map's
+    // single simplified row shows.
+    {
+        auto rows = FindConsecutiveRowsOfType(*level, LaneType::FenceTree);
+
+        if (rows.size() >= 1 && rows[0])
+        {
+            place(ObstacleType::Tree,  -halfWidth * 0.55f, *rows[0]);
+            place(ObstacleType::Fence,  halfWidth * 0.45f, *rows[0]);
+        }
+
+        if (rows.size() >= 2 && rows[1])
+        {
+            place(ObstacleType::Rock, -halfWidth * 0.40f, *rows[1]);
+
+            // Wall fully blocks and can neither be jumped nor broken (GDD),
+            // so it sits near the edge and leaves the wide side as the
+            // real route.
+            place(ObstacleType::Wall,  halfWidth * 0.73f, *rows[1]);
+        }
+
+        if (rows.size() >= 3 && rows[2])
+        {
+            place(ObstacleType::Palisade, -halfWidth * 0.44f, *rows[2]);
+            place(ObstacleType::Bush,      halfWidth * 0.22f, *rows[2]);
+            // Right side of this row (roughly x = 1.5..4.5) stays clear --
+            // BuildLevelCollectibles puts the Queen there.
+        }
+    }
+}
+
+void Game::BuildLevelHazards()
 {
     if (!level || !hazardManager)
         return;
 
     const float halfWidth = Level::GetPlayableHalfWidth();
 
-    // Arrow lane: sweeps the full width and loops back forever, per the
-    // GDD's "arrows... range covers the full horizontal width of the
-    // map." It loops on its own, so it needs no repeating spawner.
+    // Arrow section (2 rows): row 0 teaches straight dodging, row 1
+    // introduces the curved Spear -- there is no dedicated Spear lane
+    // type, so it shares the section with Arrow rather than sitting in an
+    // unrelated SafeGrass row.
     {
-        const int row = level->GetSpawnRow() + 3;
+        auto rows = FindConsecutiveRowsOfType(*level, LaneType::Arrow);
 
-        if (const Lane* lane = level->GetLane(row))
+        if (rows.size() >= 1 && rows[0])
         {
-            const float z = lane->GetCenterZ();
-            const float y = lane->GetSurfaceHeight();
+            const float y = rows[0]->GetSurfaceHeight();
+            const float z = rows[0]->GetCenterZ();
 
+            // "Arrows... range covers the full horizontal width of the
+            // map." Loops on its own, so it needs no repeating spawner.
             hazardManager->SpawnLinearHazard(
                 HazardType::Arrow,
                 glm::vec3(-halfWidth - 0.5f, y, z),
@@ -441,20 +409,14 @@ void Game::SpawnExampleHazards()
                 3.0f,
                 true);
         }
-    }
 
-    // Spear: "similar speed to arrows, but curved trajectory." Each flight
-    // is one-shot, so a repeating spawner keeps a new one coming.
-    // NOTE(Ayub/Liyuu): no dedicated Spear lane exists in Level 1 yet --
-    // placed in a SafeGrass row purely so it's visible for testing.
-    {
-        const int row = level->GetSpawnRow() + 5;
-
-        if (const Lane* lane = level->GetLane(row))
+        if (rows.size() >= 2 && rows[1])
         {
-            const float z = lane->GetCenterZ();
-            const float y = lane->GetSurfaceHeight();
+            const float y = rows[1]->GetSurfaceHeight();
+            const float z = rows[1]->GetCenterZ();
 
+            // "Similar speed to arrows, but curved trajectory." One-shot
+            // per flight, so a repeating spawner keeps a new one coming.
             hazardManager->RegisterRepeatingSpawn(
                 3.5f,
                 [this, y, z, halfWidth]()
@@ -469,18 +431,23 @@ void Game::SpawnExampleHazards()
         }
     }
 
-    // Cannonball: "faster than arrows... range is shorter and reaches
-    // about 70% of the map's width." One-shot per launch, so it also
-    // needs a repeating spawner.
-    {
-        const int row = level->GetSpawnRow() + 12;
+    // SpikeMud section: stationary only (BuildLevelObstacles). No moving
+    // hazard here, matching the GDD's map.
 
-        if (const Lane* lane = level->GetLane(row))
+    // Cannonball section (3 rows): a repeating cannonball sweep at the
+    // middle row, plus RollingRock rolling lengthwise (along Z) through
+    // the whole span at a fixed X lane clear of the sweep.
+    {
+        auto rows = FindConsecutiveRowsOfType(*level, LaneType::Cannonball);
+
+        if (rows.size() >= 2 && rows[1])
         {
-            const float z = lane->GetCenterZ();
-            const float y = lane->GetSurfaceHeight();
+            const float y = rows[1]->GetSurfaceHeight();
+            const float z = rows[1]->GetCenterZ();
             const float range = halfWidth * 0.7f;
 
+            // "Faster than arrows... range is shorter and reaches about
+            // 70% of the map's width." One-shot per launch.
             hazardManager->RegisterRepeatingSpawn(
                 2.5f,
                 [this, y, z, range]()
@@ -493,103 +460,179 @@ void Game::SpawnExampleHazards()
                         false);
                 });
         }
-    }
 
-    // Rolling Rock / Rolling Log: the GDD calls both "vertical"
-    // projectiles, meaning they roll along a lane's depth (Z), not
-    // sideways across it like arrows/cannonballs. Neither has a
-    // dedicated lane in Level 1 yet, so these roll through a short span
-    // of SafeGrass rows purely for testing.
-    {
-        // Keep the moving previews beyond the three static showcase rows
-        // (+2, +4, +6), so they demonstrate motion without passing through
-        // the obstacle and hazard displays.
-        const int startRow = level->GetSpawnRow() + 7;
-        const int endRow = level->GetSpawnRow() + 9;
-
-        if (const Lane* startLane = level->GetLane(startRow))
+        if (!rows.empty() && rows.front() && rows.back())
         {
-            const float y = startLane->GetSurfaceHeight();
-            const float startZ = Level::RowToWorldZ(startRow);
-            const float endZ = Level::RowToWorldZ(endRow);
+            const float y = rows.front()->GetSurfaceHeight();
+            const float startZ = rows.front()->GetCenterZ();
+            const float endZ = rows.back()->GetCenterZ();
+            const float x = -halfWidth * 0.44f;
 
             // "A slow vertical projectile with a large hit area."
             hazardManager->RegisterRepeatingSpawn(
                 4.0f,
-                [this, y, startZ, endZ]()
+                [this, y, x, startZ, endZ]()
                 {
                     hazardManager->SpawnLinearHazard(
                         HazardType::RollingRock,
-                        glm::vec3(-2.0f, y, startZ),
-                        glm::vec3(-2.0f, y, endZ),
+                        glm::vec3(x, y, startZ),
+                        glm::vec3(x, y, endZ),
                         1.2f,
                         false);
                 });
+        }
+    }
+
+    // FenceTree section: the Cow starts chasing from the first row's
+    // centre gap, matching the GDD's "moving environmental hazard that
+    // follows the player," escalating alongside the stationary props
+    // BuildLevelObstacles places here.
+    {
+        auto rows = FindConsecutiveRowsOfType(*level, LaneType::FenceTree);
+
+        if (!rows.empty() && rows.front())
+        {
+            hazardManager->SpawnCow(
+                glm::vec3(
+                    0.0f,
+                    rows.front()->GetSurfaceHeight(),
+                    rows.front()->GetCenterZ()),
+                2.5f);
+        }
+    }
+
+    // FireballLightning section (3 rows): a repeating curved Fireball
+    // sweep (burn patches are already automatic in HazardManager::Update),
+    // two Lightning warning zones flanking a clear centre corridor, and
+    // RollingLog rolling through the whole span at a lane opposite
+    // RollingRock, faster and with a smaller hit area per the GDD.
+    {
+        auto rows = FindConsecutiveRowsOfType(*level, LaneType::FireballLightning);
+
+        if (rows.size() >= 1 && rows[0])
+        {
+            const float y = rows[0]->GetSurfaceHeight();
+            const float z = rows[0]->GetCenterZ();
+
+            hazardManager->RegisterRepeatingSpawn(
+                4.0f,
+                [this, y, z, halfWidth]()
+                {
+                    hazardManager->SpawnCurvedHazard(
+                        HazardType::Fireball,
+                        glm::vec3(-halfWidth - 0.5f, y, z),
+                        glm::vec3(halfWidth + 0.5f, y, z),
+                        3.4f,
+                        1.3f);
+                });
+        }
+
+        if (rows.size() >= 2 && rows[1])
+        {
+            const float y = rows[1]->GetSurfaceHeight();
+            const float z = rows[1]->GetCenterZ();
+
+            // "An unavoidable strike if the player stays in a marked
+            // danger area for too long." Warning phase gives a chance to
+            // move away; centre corridor between the two zones stays clear.
+            hazardManager->SpawnWarningHazard(
+                glm::vec3(-halfWidth * 0.55f, y, z), 1.5f, 1.0f);
+
+            hazardManager->SpawnWarningHazard(
+                glm::vec3(halfWidth * 0.55f, y, z), 1.5f, 1.0f);
+        }
+
+        if (!rows.empty() && rows.front() && rows.back())
+        {
+            const float y = rows.front()->GetSurfaceHeight();
+            const float startZ = rows.front()->GetCenterZ();
+            const float endZ = rows.back()->GetCenterZ();
+            const float x = halfWidth * 0.44f;
 
             // "Similar to the rolling rock, but faster."
             hazardManager->RegisterRepeatingSpawn(
                 3.0f,
-                [this, y, startZ, endZ]()
+                [this, y, x, startZ, endZ]()
                 {
                     hazardManager->SpawnLinearHazard(
                         HazardType::RollingLog,
-                        glm::vec3(2.0f, y, startZ),
-                        glm::vec3(2.0f, y, endZ),
+                        glm::vec3(x, y, startZ),
+                        glm::vec3(x, y, endZ),
                         2.2f,
                         false);
                 });
         }
     }
-
-    // Cow: chases the pawn indefinitely from just ahead of the start area.
-    // It follows continuously on its own, so it needs no repeat spawner.
-    {
-        const int row = level->GetSpawnRow() + 15;
-
-        if (const Lane* lane = level->GetLane(row))
-        {
-            hazardManager->SpawnCow(
-                glm::vec3(halfWidth * 0.6f, lane->GetSurfaceHeight(), lane->GetCenterZ()),
-                2.5f);
-        }
-    }
 }
 
-void Game::SpawnExampleCollectibles()
+void Game::BuildLevelCollectibles()
 {
     if (!level || !collectibleManager)
         return;
 
     const float halfWidth = Level::GetPlayableHalfWidth();
 
-    // One of each ally, spaced out through the safe lanes near the start
-    // so all four are easy to test without dodging every hazard first.
-    const PieceType allies[4] =
+    // Bishop (clears nearby moving hazards): the single SafeGrass row
+    // right before the Arrow section.
     {
-        PieceType::Bishop,
-        PieceType::Knight,
-        PieceType::Rook,
-        PieceType::Queen
-    };
-
-    for (int index = 0; index < 4; ++index)
-    {
-        const int row = level->GetSpawnRow() + 1 + index * 2;
+        const int row = level->FindRowOfType(LaneType::Arrow) - 1;
 
         if (const Lane* lane = level->GetLane(row))
         {
-            const float x = (index % 2 == 0)
-                ? halfWidth * 0.35f
-                : -halfWidth * 0.35f;
-
             collectibleManager->Spawn(
-                allies[index],
-                glm::vec3(x, lane->GetSurfaceHeight(), lane->GetCenterZ()));
+                PieceType::Bishop,
+                glm::vec3(0.0f, lane->GetSurfaceHeight(), lane->GetCenterZ()));
         }
     }
 
-    // Same presentation pass as the showcase: the allies stand still until
-    // they are picked up, so the horse-bodied ones are shown in profile.
+    // Knight (speed + immunity): the middle row of the SafeGrass x3 block
+    // right before SpikeMud.
+    {
+        const int row = level->FindRowOfType(LaneType::SpikeMud) - 2;
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            collectibleManager->Spawn(
+                PieceType::Knight,
+                glm::vec3(0.0f, lane->GetSurfaceHeight(), lane->GetCenterZ()));
+        }
+    }
+
+    // Rook (shield): on the Checkpoint row itself, right before Cannonball.
+    // Offset off-centre so it doesn't visually collide with the gate.
+    {
+        const int row = level->FindRowOfType(LaneType::Checkpoint);
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            collectibleManager->Spawn(
+                PieceType::Rook,
+                glm::vec3(
+                    halfWidth * 0.3f,
+                    lane->GetSurfaceHeight(),
+                    lane->GetCenterZ()));
+        }
+    }
+
+    // Queen (combined abilities): the clear gap on the right side of the
+    // last FenceTree row, right before the FireballLightning gauntlet --
+    // there is no SafeGrass row between those two sections.
+    {
+        const int row = level->FindRowOfType(LaneType::FireballLightning) - 1;
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            collectibleManager->Spawn(
+                PieceType::Queen,
+                glm::vec3(
+                    halfWidth * 0.7f,
+                    lane->GetSurfaceHeight(),
+                    lane->GetCenterZ()));
+        }
+    }
+
+    // Same presentation pass as before: the allies stand still until they
+    // are picked up, so the horse-bodied ones are shown in profile.
     for (const auto& piece : collectibleManager->GetCollectibles())
     {
         if (piece)
@@ -755,15 +798,6 @@ void Game::Update(float deltaTime)
     if (pawn && pawn->IsActive())
         pawn->Update(deltaTime);
 
-    // Animated pieces need their own tick. Nothing on the field moves them
-    // yet, so they hold the rest pose - but the moment something does call
-    // SetMovementState on one, it walks, with no further wiring here.
-    for (const auto& piece : showcasePieces)
-    {
-        if (piece && piece->IsActive())
-            piece->Update(deltaTime);
-    }
-
     if (collectibleManager)
     {
         for (const auto& piece : collectibleManager->GetCollectibles())
@@ -890,13 +924,7 @@ void Game::Render()
 
     // Every shadow before every model: shadows are translucent and have to
     // blend over ground that has already been drawn.
-    for (const auto& piece : showcasePieces)
-    {
-        if (piece)
-            renderer->Draw(piece->GetShadow());
-    }
-
-    for (const auto& obstacle : showcaseObstacles)
+    for (const auto& obstacle : levelObstacles)
     {
         if (obstacle)
             renderer->Draw(obstacle->GetShadow());
@@ -956,10 +984,7 @@ void Game::Render()
             renderer->Draw(*door);
     }
 
-    for (const auto& piece : showcasePieces)
-        DrawPiece(*piece);
-
-    for (const auto& obstacle : showcaseObstacles)
+    for (const auto& obstacle : levelObstacles)
     {
         if (obstacle)
             renderer->Draw(*obstacle);
@@ -1053,8 +1078,7 @@ void Game::Shutdown()
 
     // Props before the libraries: both hold the shared meshes, and every GPU
     // buffer has to be released while the GL context is still alive.
-    showcasePieces.clear();
-    showcaseObstacles.clear();
+    levelObstacles.clear();
     capturedKing.reset();
     kingsCage.reset();
     checkpointGate.reset();

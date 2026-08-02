@@ -109,14 +109,6 @@ public:
 
 private:
 
-    /// TEMPORARY: lines the placeholder models up in front of the pawn so
-    /// they can be inspected side by side - chess pieces, then stationary
-    /// props, then hazards, one row each.
-    ///
-    /// Delete this method and its call in Initialize once the level places
-    /// these for real. Nothing else depends on it.
-    void BuildShowcase();
-
     /// Stands one checkpoint gate on the level's checkpoint lane.
     ///
     /// Unlike the showcase this is a real placement, not scaffolding: the
@@ -135,14 +127,6 @@ private:
     /// Gameplay will later decide when its separate door should open.
     void BuildKingsCage();
 
-    /// Fills one evenly spaced row of a showcase, centred on the board.
-    /// Returns the ground position for the given slot.
-    glm::vec3 GetShowcaseSlot(
-        int lanesAhead,
-        int slot,
-        int slotCount,
-        float spacing) const;
-
     /// Applies the reference game's camera setup: an orthographic camera
     /// tilted down over the battlefield, at the angle and zoom recorded in
     /// GameConfig.
@@ -154,16 +138,18 @@ private:
     /// motion, so a jump inside the lock space leaves the camera still.
     void UpdateCamera();
 
-    /// TEMPORARY: spawns examples of the mesh-backed moving hazards so the
-    /// system is visible before level data decides real placement. Fireball
-    /// and Lightning stay unspawned until their deferred visuals exist.
-    /// Delete this method and its call in Initialize once that lands,
-    /// exactly like BuildShowcase above.
-    void SpawnExampleHazards();
+    /// Places every stationary prop the level's SpikeMud and FenceTree
+    /// sections need, reading real lane rows from `level`.
+    void BuildLevelObstacles();
 
-    /// TEMPORARY: same idea as SpawnExampleHazards, for the four
-    /// collectible allies. Delete once Liyuu's level data places these.
-    void SpawnExampleCollectibles();
+    /// Places every moving hazard's real lane assignment, following the
+    /// GDD's escalation grouping (arrows/spears together, cannonballs/
+    /// rolling rocks together, fireballs/lightning/rolling logs together).
+    void BuildLevelHazards();
+
+    /// Places the four collectible allies just ahead of the section each
+    /// ability is most useful for.
+    void BuildLevelCollectibles();
 
     //---------------------------------------------------------
     // Interaction (E)
@@ -248,8 +234,6 @@ private:
     /// assets exist.
     std::vector<Sprite> sprites;
 
-    /// TEMPORARY: the showcase rows described above.
-    std::vector<std::shared_ptr<ChessPiece>> showcasePieces;
-
-    std::vector<std::shared_ptr<Obstacle>> showcaseObstacles;
+    /// Stationary props placed on the SpikeMud and FenceTree lanes.
+    std::vector<std::shared_ptr<StaticObstacle>> levelObstacles;
 };

@@ -247,6 +247,25 @@ namespace ObstacleMeshFactory
             model.footprintDepth = 0.20f;
             break;
         }
+
+        case ObstacleType::Mud:
+        {
+            // A flat, low puddle patch. Deliberately far shorter than every
+            // other stationary prop -- the GDD has mud slow the player, not
+            // block them, so nothing about its silhouette should read as an
+            // obstacle to jump.
+            builder.SetColor(ObstaclePalette::Mud);
+            builder.AddSlabAt(0.0f, 0.0f, 0.95f, 0.85f, 0.0f, 0.05f);
+
+            builder.SetColor(ObstaclePalette::MudWet);
+            builder.AddSlabAt(0.18f, -0.08f, 0.42f, 0.38f, 0.03f, 0.07f);
+            builder.AddSlabAt(-0.22f, 0.14f, 0.30f, 0.28f, 0.02f, 0.06f);
+
+            model.height = 0.07f;
+            model.footprintWidth = 0.95f;
+            model.footprintDepth = 0.85f;
+            break;
+        }
         }
 
         model.mesh = builder.Build();
