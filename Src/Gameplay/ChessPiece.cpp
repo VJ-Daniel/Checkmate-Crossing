@@ -112,11 +112,13 @@ const std::vector<std::shared_ptr<SceneNode>>& ChessPiece::GetRigParts() const
 void ChessPiece::SetMovementState(
     bool isMoving,
     bool isGrounded,
-    float newSpeedScale)
+    float newSpeedScale,
+    float newVerticalVelocity)
 {
     moving = isMoving;
     grounded = isGrounded;
     speedScale = newSpeedScale;
+    verticalVelocity = newVerticalVelocity;
 }
 
 void ChessPiece::Update(float deltaTime)
@@ -124,7 +126,8 @@ void ChessPiece::Update(float deltaTime)
     if (!rig || !animator)
         return;
 
-    animator->Update(deltaTime, moving, grounded, speedScale);
+    animator->Update(
+        deltaTime, moving, grounded, speedScale, verticalVelocity);
 
     RefreshRig();
 }

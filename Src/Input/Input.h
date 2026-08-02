@@ -1,6 +1,11 @@
 #pragma once
 
 #include <glm.hpp>
+
+// GLEW before GLFW, always: GLFW pulls in gl.h, and GLEW refuses to load
+// after it. Every other translation unit reached a mesh header first and got
+// this ordering by luck; a file that includes only Input.h did not.
+#include <glew.h>
 #include <glfw3.h>
 
 enum class Key
@@ -35,6 +40,15 @@ enum class Key
     X = GLFW_KEY_X,
     Y = GLFW_KEY_Y,
     Z = GLFW_KEY_Z,
+
+    /// The number row. Added for the developer cheat keys; nothing in
+    /// normal gameplay is bound to these.
+    Num1 = GLFW_KEY_1,
+    Num2 = GLFW_KEY_2,
+    Num3 = GLFW_KEY_3,
+    Num4 = GLFW_KEY_4,
+    Num5 = GLFW_KEY_5,
+    Num6 = GLFW_KEY_6,
 
     Escape = GLFW_KEY_ESCAPE,
 

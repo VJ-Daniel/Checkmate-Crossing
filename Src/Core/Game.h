@@ -5,6 +5,7 @@
 
 #include "CageMeshFactory.h"
 #include "Camera3D.h"
+#include "Cheat.h"
 #include "CheckpointGate.h"
 #include "ChessPiece.h"
 #include "CollectibleManager.h"
@@ -207,6 +208,10 @@ private:
     /// Own one model per type. Held by the game so the meshes are released
     /// in Shutdown, while the GL context is still alive.
     std::shared_ptr<PieceMeshLibrary> pieceMeshes;
+
+    /// Developer-only character switching. Inert unless
+    /// CheatConfig::EnableCheatKeys is on.
+    CheatSystem cheats;
 
     std::shared_ptr<ObstacleMeshLibrary> obstacleMeshes;
 

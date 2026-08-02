@@ -104,7 +104,8 @@ void PieceAnimator::Update(
     float deltaTime,
     bool isMoving,
     bool isGrounded,
-    float speedScale)
+    float speedScale,
+    float verticalVelocity)
 {
     // Airborne wins over moving: a piece that jumps while running is
     // jumping, and reads as jumping, until it lands.
@@ -154,7 +155,18 @@ void PieceAnimator::Update(
         BuildWalkPose(pose, walkWeight);
 
     if (jumpWeight > 0.0f)
-        BuildJumpPose(pose, jumpWeight);
+    {
+        // Climbing hard reads as a launch; at the apex and on the way down
+        // it reads as hanging. Taken from the real vertical speed, so the
+        // pose follows the actual arc instead of a guess at its timing.
+        const float launch = std::min(
+            std::max(
+                verticalVelocity / PieceAnimationTuning::LaunchReferenceSpeed,
+                0.0f),
+            1.0f);
+
+        BuildJumpPose(pose, jumpWeight, launch);
+    }
 }
 
 void PieceAnimator::BuildWalkPose(PiecePose& target, float weight) const
@@ -224,6 +236,21 @@ void PieceAnimator::BuildWalkPose(PiecePose& target, float weight) const
 
         AddSwing(target, PieceJoint::Body, axis,
             std::sin(phase * 2.0f) * BodyTwistDegrees * 0.5f * weight);
+
+        // A rider, if this model carries one. The Rider joint already hangs
+        // off the horse's Body, so the bounce and rock reach him through the
+        // hierarchy for free - these are only the secondary movements on top.
+        //
+        // Written unconditionally: a horse with no rider simply has no such
+        // joints, and the rig drops angles for parts that do not exist.
+        AddSwing(target, PieceJoint::Rider, axis,
+            std::sin(phase * 2.0f + Pi) * RiderRockDegrees * weight);
+
+        AddSwing(target, PieceJoint::LeftArm, axis,
+            swing * RiderArmDegrees * weight);
+
+        AddSwing(target, PieceJoint::RightArm, axis,
+            counterSwing * RiderArmDegrees * weight);
     }
 
     // Two bobs per stride, one per footfall. abs() of a sine at the stride
@@ -232,23 +259,36 @@ void PieceAnimator::BuildWalkPose(PiecePose& target, float weight) const
         std::fabs(std::sin(phase)) * WalkBobHeight * weight;
 }
 
-void PieceAnimator::BuildJumpPose(PiecePose& target, float weight) const
+void PieceAnimator::BuildJumpPose(
+    PiecePose& target,
+    float weight,
+    float launch) const
 {
     using namespace PieceMeshFactory;
     using namespace PieceAnimationTuning;
 
     const int axis = SwingAxis;
 
+    // Whatever is not a launch is hang time. The two shapes are mixed by
+    // these rather than switched between, so the body flows from driving off
+    // the ground into a tuck instead of snapping at some threshold.
+    const float hang = 1.0f - launch;
+
     if (bodyPlan == PieceBodyPlan::Humanoid)
     {
-        // One leg tucked up in front and one trailing, rather than both
-        // together: a symmetrical tuck reads as sitting down in mid-air.
+        // Pushing off, both legs drive down together. At the apex they tuck
+        // - one up in front and one trailing, because a symmetrical tuck
+        // reads as sitting down in mid-air.
+        const float legPush = LaunchLegPushDegrees * launch * weight;
+
         AddSwing(target, PieceJoint::LeftLeg, axis,
-            JumpLeadLegDegrees * weight);
+            legPush + JumpLeadLegDegrees * hang * weight);
 
         AddSwing(target, PieceJoint::RightLeg, axis,
-            JumpTrailLegDegrees * weight);
+            legPush + JumpTrailLegDegrees * hang * weight);
 
+        // Arms come up for balance the moment the feet leave the ground and
+        // stay there, so there is nothing to blend on this one.
         AddSwing(target, PieceJoint::LeftArm, axis,
             JumpArmDegrees * weight);
 
@@ -258,33 +298,45 @@ void PieceAnimator::BuildJumpPose(PiecePose& target, float weight) const
         // The robe swings back from the lift, which is the closest a single
         // skirt gets to tucked legs.
         AddSwing(target, PieceJoint::Robe, axis,
-            JumpTrailLegDegrees * 0.5f * weight);
+            JumpTrailLegDegrees * 0.5f * hang * weight);
 
         AddSwing(target, PieceJoint::Body, axis,
-            JumpLeanDegrees * weight);
+            JumpLeanDegrees * hang * weight);
+
+        // Stretch upward on the push only. This moves the visual root, never
+        // the piece - the rig rebuilds the root from the ground position
+        // every frame, so it cannot accumulate.
+        target.rootOffset.y += LaunchStretchHeight * launch * weight;
     }
     else
     {
+        const float horsePush = LaunchHorseLegPushDegrees * launch * weight;
+
         AddSwing(target, PieceJoint::LeftLeg, axis,
-            JumpFrontLegDegrees * weight);
+            horsePush + JumpFrontLegDegrees * hang * weight);
 
         AddSwing(target, PieceJoint::RightLeg, axis,
-            JumpFrontLegDegrees * weight);
+            horsePush + JumpFrontLegDegrees * hang * weight);
 
         AddSwing(target, PieceJoint::RearLeftLeg, axis,
-            JumpRearLegDegrees * weight);
+            horsePush + JumpRearLegDegrees * hang * weight);
 
         AddSwing(target, PieceJoint::RearRightLeg, axis,
-            JumpRearLegDegrees * weight);
+            horsePush + JumpRearLegDegrees * hang * weight);
 
+        // Head and neck come up hardest over the push, which is what makes
+        // the front of the animal rise into the jump.
         AddSwing(target, PieceJoint::Head, axis,
-            JumpNeckDegrees * weight);
+            JumpNeckDegrees * (0.5f + 0.5f * launch) * weight);
 
         AddSwing(target, PieceJoint::Tail, axis,
-            JumpRearLegDegrees * 0.4f * weight);
-    }
+            JumpRearLegDegrees * 0.4f * hang * weight);
 
-    // No root offset. How high the piece actually goes is the gameplay's
-    // to decide; the animator only changes what the body looks like on the
-    // way up and down.
+        // The rider folds forward over the horse's neck on the way up and
+        // settles once the arc levels out.
+        AddSwing(target, PieceJoint::Rider, axis,
+            RiderJumpLeanDegrees * (0.4f + 0.6f * launch) * weight);
+
+        target.rootOffset.y += LaunchStretchHeight * launch * weight;
+    }
 }

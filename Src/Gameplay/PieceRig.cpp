@@ -25,26 +25,6 @@ PieceRig::PieceRig()
 {
 }
 
-PieceJoint PieceRig::GetParent(PieceJoint joint)
-{
-    switch (joint)
-    {
-        // The arms follow the torso, so a body lean or twist carries them
-        // with it. The horse's neck and tail do the same.
-    case PieceJoint::LeftArm:
-    case PieceJoint::RightArm:
-    case PieceJoint::Head:
-    case PieceJoint::Tail:
-        return PieceJoint::Body;
-
-        // Legs and skirt hang off the root instead. Parented to the body
-        // they would inherit its lean and twist, and the feet would slide
-        // sideways every time the torso turned.
-    default:
-        return PieceJoint::Root;
-    }
-}
-
 void PieceRig::Build(const PieceRigModel& model)
 {
     joints = {};
@@ -87,9 +67,7 @@ void PieceRig::Build(const PieceRigModel& model)
         if (!node || index == static_cast<int>(PieceJoint::Root))
             continue;
 
-        const auto joint = static_cast<PieceJoint>(index);
-
-        PieceJoint parentJoint = GetParent(joint);
+        PieceJoint parentJoint = model.parts[index].parent;
 
         // A joint whose parent this model does not have falls back to the
         // root, so a partial rig - the horse has no arms, the bishop no

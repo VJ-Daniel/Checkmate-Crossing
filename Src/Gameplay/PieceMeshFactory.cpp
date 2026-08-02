@@ -1099,6 +1099,7 @@ namespace PieceMeshFactory
         void BuildPart(
             PieceRigModel& model,
             PieceJoint joint,
+            PieceJoint parent,
             const glm::vec3& pivot,
             BuildFn build)
         {
@@ -1115,6 +1116,7 @@ namespace PieceMeshFactory
 
             part.mesh = builder.Build();
             part.pivot = pivot;
+            part.parent = parent;
         }
 
         /// The parts every standing humanoid shares: two legs, a body and
@@ -1131,36 +1133,48 @@ namespace PieceMeshFactory
             const FigureSpec& spec,
             float forwardReach,
             BodyFn addBody,
-            PropFn addProp)
+            PropFn addProp,
+            bool withLegs = true,
+            PieceJoint torsoJoint = PieceJoint::Body,
+            PieceJoint torsoParent = PieceJoint::Root)
         {
             const float hipY = GetHipPivotY(spec);
             const float shoulderY = GetShoulderPivotY(spec);
 
             const glm::vec3 bodyPivot(0.0f, hipY, 0.0f);
 
-            BuildPart(model, PieceJoint::Body, bodyPivot,
+            BuildPart(model, torsoJoint, torsoParent, bodyPivot,
                 [&](MeshBuilder& b) { addBody(b); });
 
             for (int side = -1; side <= 1; side += 2)
             {
-                const PieceJoint legJoint = (side < 0)
-                    ? PieceJoint::LeftLeg
-                    : PieceJoint::RightLeg;
+                // Legs hang off the root, not the torso: parented to the
+                // body they would inherit its lean and twist and the feet
+                // would slide sideways every time the torso turned.
+                if (withLegs)
+                {
+                    const PieceJoint legJoint = (side < 0)
+                        ? PieceJoint::LeftLeg
+                        : PieceJoint::RightLeg;
 
-                BuildPart(
-                    model, legJoint,
-                    glm::vec3(
-                        static_cast<float>(side) * spec.hipSpread,
-                        hipY,
-                        0.0f),
-                    [&](MeshBuilder& b) { AddLeg(b, spec, side); });
+                    BuildPart(
+                        model, legJoint, PieceJoint::Root,
+                        glm::vec3(
+                            static_cast<float>(side) * spec.hipSpread,
+                            hipY,
+                            0.0f),
+                        [&](MeshBuilder& b) { AddLeg(b, spec, side); });
+                }
 
                 const PieceJoint armJoint = (side < 0)
                     ? PieceJoint::LeftArm
                     : PieceJoint::RightArm;
 
+                // Arms follow the torso, whatever the torso itself follows -
+                // which is how a rider's arms end up moving with the rider
+                // rather than with the horse underneath him.
                 BuildPart(
-                    model, armJoint,
+                    model, armJoint, torsoJoint,
                     glm::vec3(
                         static_cast<float>(side) * spec.armSpread,
                         shoulderY,
@@ -1178,12 +1192,16 @@ namespace PieceMeshFactory
 
     bool HasRig(PieceType type)
     {
-        // The four pieces with a rig. The rest still draw as one baked mesh,
-        // which is all a piece that never moves needs.
+        // Every piece has a rig now. Kept as a function rather than dropped
+        // so a future piece that genuinely wants to stay a single baked mesh
+        // has somewhere to say so.
         return type == PieceType::Pawn ||
             type == PieceType::Rook ||
             type == PieceType::Knight ||
-            type == PieceType::Bishop;
+            type == PieceType::Bishop ||
+            type == PieceType::Queen ||
+            type == PieceType::King ||
+            type == PieceType::MountedPawn;
     }
 
     PieceRigModel CreateRig(PieceType type)
@@ -1272,14 +1290,21 @@ namespace PieceMeshFactory
                     const float headTop = AddHead(b, spec);
                     mitreTop = AddMitre(b, spec, headTop);
                 },
-                [&](MeshBuilder& b) { AddBook(b, spec, handY); });
+                [&](MeshBuilder& b) { AddBook(b, spec, handY); },
+                false);
 
             // The robe stands in for the legs. It is a single skirt, so it
             // cannot stride - it hangs off the hips and sways, which is the
             // honest reading of a robed figure walking and the only one that
             // does not redesign the piece.
+            //
+            // withLegs is false above for exactly that reason, and it is what
+            // was missing: the rig was building a striding pair of legs on
+            // top of the skirt that the bishop's own baked model has never
+            // had, and the walk swung them straight out through it. The queen
+            // is built the same way and never showed the fault.
             BuildPart(
-                model, PieceJoint::Robe,
+                model, PieceJoint::Robe, PieceJoint::Root,
                 glm::vec3(0.0f, spec.hipTop, 0.0f),
                 [&](MeshBuilder& b)
                 {
@@ -1297,15 +1322,15 @@ namespace PieceMeshFactory
             const PieceMaterials& materials = PieceMaterialSets::Detailed;
 
             BuildPart(
-                model, PieceJoint::Body, GetHorseBodyPivot(),
+                model, PieceJoint::Body, PieceJoint::Root, GetHorseBodyPivot(),
                 [&](MeshBuilder& b) { AddHorseBody(b, materials); });
 
             BuildPart(
-                model, PieceJoint::Head, GetHorseNeckPivot(),
+                model, PieceJoint::Head, PieceJoint::Body, GetHorseNeckPivot(),
                 [&](MeshBuilder& b) { AddHorseNeckHead(b, materials); });
 
             BuildPart(
-                model, PieceJoint::Tail, GetHorseTailPivot(),
+                model, PieceJoint::Tail, PieceJoint::Body, GetHorseTailPivot(),
                 [&](MeshBuilder& b)
                 {
                     b.SetColor(materials.coat);
@@ -1329,13 +1354,228 @@ namespace PieceMeshFactory
                         legJoints[(ix > 0) ? 1 : 0][(iz > 0) ? 1 : 0];
 
                     BuildPart(
-                        model, joint, GetHorseLegPivot(ix, iz),
+                        model, joint, PieceJoint::Root, GetHorseLegPivot(ix, iz),
                         [&](MeshBuilder& b)
                         {
                             AddHorseLeg(b, materials, ix, iz);
                         });
                 }
             }
+
+            model.height = GetHorseTopY();
+            model.baseWidth = 0.62f;
+            model.baseDepth = 0.34f;
+            break;
+        }
+
+        case PieceType::Queen:
+        {
+            // Robed like the bishop, so the skirt takes the stride the legs
+            // would have. Hair, crown and scepter ride the torso.
+            FigureSpec spec;
+            spec.materials = PieceMaterialSets::Detailed;
+            spec.detailedFace = true;
+            spec.shoulderWidth = 0.36f;
+            spec.torsoWidth = 0.27f;
+            spec.armSpread = 0.175f;
+            spec.headWidth = 0.18f;
+            spec.headDepth = 0.16f;
+            spec.hipTop = 0.56f;
+            spec.torsoTop = 0.76f;
+            spec.shoulderBottom = 0.70f;
+            spec.shoulderTop = 0.79f;
+            spec.headTop = 0.93f;
+
+            const float handY = GetHandY(spec);
+
+            BuildHumanoidRig(
+                model, spec, 0.0f,
+                [&](MeshBuilder& b)
+                {
+                    AddTorso(b, spec);
+                    AddHair(b, spec, 0.70f, spec.headTop + 0.03f);
+                    const float headTop = AddHead(b, spec);
+                    AddCrown(b, spec, headTop, 0.11f, true, false);
+                },
+                [&](MeshBuilder& b) { AddStaff(b, spec, handY, 1.20f); },
+                false);
+
+            BuildPart(
+                model, PieceJoint::Robe, PieceJoint::Root,
+                glm::vec3(0.0f, spec.hipTop, 0.0f),
+                [&](MeshBuilder& b)
+                {
+                    AddRobe(b, spec, 0.44f, 0.28f, spec.hipTop);
+                });
+
+            model.height = 1.20f;
+            model.baseWidth = 0.44f;
+            model.baseDepth = 0.44f;
+            break;
+        }
+
+        case PieceType::King:
+        {
+            // The bulkiest figure, and the only one carrying a cape. The
+            // cape hangs off the torso so it swings with the body rather
+            // than staying nailed to the world while the king walks out of
+            // it - which is also why it is built into the Body part and not
+            // a joint of its own.
+            FigureSpec spec;
+            spec.materials = PieceMaterialSets::Detailed;
+            spec.detailedFace = true;
+            spec.shoulderWidth = 0.45f;
+            spec.torsoWidth = 0.32f;
+            spec.torsoDepth = 0.19f;
+            spec.hipSpread = 0.085f;
+            spec.armSpread = 0.20f;
+            spec.headWidth = 0.20f;
+            spec.headDepth = 0.18f;
+            spec.feetTop = 0.08f;
+            spec.kneeTop = 0.27f;
+            spec.hipTop = 0.46f;
+            spec.torsoTop = 0.72f;
+            spec.shoulderBottom = 0.65f;
+            spec.shoulderTop = 0.76f;
+            spec.headTop = 0.91f;
+
+            const float handY = GetHandY(spec);
+
+            float crownTop = 0.0f;
+
+            BuildHumanoidRig(
+                model, spec, 0.0f,
+                [&](MeshBuilder& b)
+                {
+                    AddCape(b, spec, 0.12f);
+                    AddTorso(b, spec);
+                    AddBeard(b, spec, 0.77f, 0.855f);
+                    const float headTop = AddHead(b, spec);
+                    crownTop =
+                        AddCrown(b, spec, headTop, 0.075f, false, true);
+                },
+                [&](MeshBuilder& b) { AddSword(b, spec, handY, 1.45f); });
+
+            model.height = crownTop;
+            model.baseWidth = 0.40f;
+            model.baseDepth = 0.32f;
+            break;
+        }
+
+        case PieceType::MountedPawn:
+        {
+            // One character built from two body plans.
+            //
+            // The horse is the same four parts the Knight uses. The rider is
+            // an ordinary humanoid torso whose joint hangs off the horse's
+            // Body rather than off the root, so every bounce, rock and lean
+            // the horse makes carries the rider with it. Nothing re-seats
+            // the pawn per frame and nothing can slide: staying in the
+            // saddle is a property of the hierarchy, not of the animation.
+            // The same detailed palette the baked mounted pawn and the
+            // Knight's horse use, so all three read as one animal.
+            const PieceMaterials& materials = PieceMaterialSets::Detailed;
+
+            BuildPart(
+                model, PieceJoint::Body, PieceJoint::Root,
+                GetHorseBodyPivot(),
+                [&](MeshBuilder& b) { AddHorseBody(b, materials); });
+
+            BuildPart(
+                model, PieceJoint::Head, PieceJoint::Body,
+                GetHorseNeckPivot(),
+                [&](MeshBuilder& b) { AddHorseNeckHead(b, materials); });
+
+            BuildPart(
+                model, PieceJoint::Tail, PieceJoint::Body,
+                GetHorseTailPivot(),
+                [&](MeshBuilder& b)
+                {
+                    b.SetColor(materials.coat);
+                    AddHorseTail(b, materials);
+                });
+
+            const PieceJoint legJoints[2][2] =
+            {
+                { PieceJoint::RearLeftLeg, PieceJoint::RearRightLeg },
+                { PieceJoint::LeftLeg, PieceJoint::RightLeg }
+            };
+
+            for (int ix = -1; ix <= 1; ix += 2)
+            {
+                for (int iz = -1; iz <= 1; iz += 2)
+                {
+                    const PieceJoint joint =
+                        legJoints[(ix > 0) ? 1 : 0][(iz > 0) ? 1 : 0];
+
+                    BuildPart(
+                        model, joint, PieceJoint::Root,
+                        GetHorseLegPivot(ix, iz),
+                        [&](MeshBuilder& b)
+                        {
+                            AddHorseLeg(b, materials, ix, iz);
+                        });
+                }
+            }
+
+            // The rider, at exactly the landmarks the baked model uses, so
+            // the seated pose is unchanged.
+            FigureSpec spec;
+            spec.materials = materials;
+            spec.detailedFace = true;
+
+            const float lift = HorseSaddleTop - 0.05f;
+
+            spec.hipTop = lift + 0.09f;
+            spec.torsoTop = lift + 0.30f;
+            spec.shoulderBottom = lift + 0.24f;
+            spec.shoulderTop = lift + 0.34f;
+            spec.headTop = lift + 0.48f;
+
+            BuildHumanoidRig(
+                model, spec, 0.09f,
+                [&](MeshBuilder& b)
+                {
+                    // Thighs across the saddle and shins down its sides.
+                    // Built into the rider's own part rather than given leg
+                    // joints: a straddling leg has nothing to stride with,
+                    // and a leg that swung here would swing through the
+                    // horse.
+                    for (int side = -1; side <= 1; side += 2)
+                    {
+                        const float across =
+                            static_cast<float>(side) * (spec.hipSpread + 0.09f);
+
+                        b.SetColor(spec.materials.armorLight);
+
+                        AddFigurePart(
+                            b, spec, across, 0.05f,
+                            lift + 0.01f, spec.hipTop + 0.02f,
+                            0.115f, 0.20f);
+
+                        b.SetColor(spec.materials.clothBlue);
+
+                        AddFigurePart(
+                            b, spec, across, 0.125f,
+                            lift - 0.20f, lift + 0.03f,
+                            0.105f, 0.115f);
+
+                        b.SetColor(spec.materials.leather);
+
+                        AddFigurePart(
+                            b, spec, across, 0.15f,
+                            lift - 0.26f, lift - 0.19f,
+                            0.115f, 0.15f);
+                    }
+
+                    AddTorso(b, spec);
+                    const float headTop = AddHead(b, spec);
+                    AddSoldierHelmet(b, spec, headTop);
+                },
+                [](MeshBuilder&) {},
+                false,
+                PieceJoint::Rider,
+                PieceJoint::Body);
 
             model.height = GetHorseTopY();
             model.baseWidth = 0.62f;
@@ -1707,9 +1947,12 @@ std::shared_ptr<ChessPiece> PieceMeshLibrary::CreatePiece(
 
             piece->SetRigScale(GameConfig::PieceScale);
 
+            // Both horse-bodied pieces animate on the quadruped plan; the
+            // mounted one simply has a rider hanging off the same skeleton.
             piece->AttachRig(
                 std::move(rig),
-                type == PieceType::Knight);
+                type == PieceType::Knight ||
+                type == PieceType::MountedPawn);
         }
     }
 

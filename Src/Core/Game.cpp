@@ -761,6 +761,11 @@ void Game::Update(float deltaTime)
     if (level)
         level->Update(deltaTime);
 
+    // Before the pawn's own update, so a character switched this frame is
+    // the one that moves and animates this frame.
+    if (pawn && pieceMeshes)
+        cheats.Update(*pawn, *pieceMeshes);
+
     if (pawn && pawn->IsActive())
         pawn->Update(deltaTime);
 

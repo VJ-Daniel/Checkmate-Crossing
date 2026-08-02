@@ -114,7 +114,11 @@ void Pawn::Update(float deltaTime)
     // never gets flattened by horizontal collision response.
     if (level)
     {
-        const float halfFootprint = GameConfig::PawnWidth * 0.5f;
+        // The current character's own half-width, so a switch to a wider
+        // body is resolved against the bounds correctly.
+        const float halfFootprint = (footprintRadius > 0.0f)
+            ? footprintRadius
+            : GameConfig::PawnWidth * 0.5f;
         const glm::vec3 resolved = level->ClampToPlayableBounds(
             position,
             halfFootprint,
@@ -222,24 +226,107 @@ void Pawn::ApplyTerrainHeight()
 
 void Pawn::AttachRig(PieceMeshLibrary& meshLibrary)
 {
-    const PieceMeshFactory::PieceRigModel& model =
-        meshLibrary.GetRigModel(PieceType::Pawn);
+    SetCharacter(PieceType::Pawn, meshLibrary);
+}
 
-    if (!model.valid)
+bool Pawn::GetCharacterAbility(
+    PieceType character,
+    PieceType& abilityType)
+{
+    switch (character)
+    {
+        // The three collectible allies map straight onto their own
+        // abilities, which the ability system already implements.
+    case PieceType::Bishop:
+    case PieceType::Rook:
+    case PieceType::Queen:
+        abilityType = character;
+        return true;
+
+        // Riding the horse is what grants the horse's speed and hazard
+        // immunity, so the mounted character banks the Knight ability. The
+        // standalone Knight is not a playable character.
+    case PieceType::MountedPawn:
+        abilityType = PieceType::Knight;
+        return true;
+
+        // The plain pawn has no ability by design, and the King has none
+        // implemented anywhere in the project or written down in the GDD.
+    default:
+        return false;
+    }
+}
+
+void Pawn::ClearAbilityState()
+{
+    abilityActive = false;
+    abilityTimeRemaining = 0.0f;
+    shieldAvailable = false;
+    hasStoredPiece = false;
+    bishopPulsePending = false;
+}
+
+void Pawn::SetCharacter(
+    PieceType newCharacter,
+    PieceMeshLibrary& meshLibrary)
+{
+    // The riderless horse is a collectible, not a body the player wears.
+    if (newCharacter == PieceType::Knight)
         return;
 
+    const PieceMeshFactory::PieceRigModel& rigModel =
+        meshLibrary.GetRigModel(newCharacter);
+
+    if (!rigModel.valid)
+        return;
+
+    character = newCharacter;
+
+    // Replacing the unique_ptr releases the previous character's parts, so
+    // only one body is ever in the draw list.
     rig = std::make_unique<PieceRig>();
-    rig->Build(model);
+    rig->Build(rigModel);
     rig->SetScale(GameConfig::PieceScale);
 
-    animator = std::make_unique<PieceAnimator>(PieceBodyPlan::Humanoid);
+    const bool quadruped = (newCharacter == PieceType::MountedPawn);
 
-    // The cube goes, but nothing else does: PawnWidth and PawnHeight still
-    // drive the shadow, the terrain snap and every distance check in the
-    // game. The rig is only what the player sees.
+    animator = std::make_unique<PieceAnimator>(
+        quadruped ? PieceBodyPlan::Quadruped : PieceBodyPlan::Humanoid);
+
+    // Footprint and shadow come from the model the character is actually
+    // built from, so both follow the body rather than staying on the pawn's.
+    const PieceModel& baked = meshLibrary.GetModel(newCharacter);
+
+    const float width = baked.baseWidth * GameConfig::PieceScale;
+    const float depth = baked.baseDepth * GameConfig::PieceScale;
+
+    footprintRadius = width * 0.5f;
+
+    shadow.SetFootprint(
+        width * GameConfig::ShadowScale,
+        depth * GameConfig::ShadowScale);
+
+    // The cube goes, but the transform convention does not: PawnHeight still
+    // places the transform and every distance check in the game reads it, so
+    // switching character cannot move the player.
     SetMesh(nullptr);
 
+    // Nothing of the previous character survives - no lingering shield, no
+    // stale immunity, no half-finished stride.
+    ClearAbilityState();
+
+    PieceType ability = PieceType::Bishop;
+
+    if (GetCharacterAbility(newCharacter, ability))
+        CollectPiece(ability);
+
+    UpdateShadow();
     UpdateAnimation(0.0f);
+}
+
+PieceType Pawn::GetCharacter() const
+{
+    return character;
 }
 
 const std::vector<std::shared_ptr<SceneNode>>& Pawn::GetRigParts() const
@@ -270,7 +357,8 @@ void Pawn::UpdateAnimation(float deltaTime)
         deltaTime,
         IsMoving(),
         IsGrounded(),
-        GetSpeedMultiplier());
+        GetSpeedMultiplier(),
+        GetJumpVerticalVelocity());
 
     // The rig's origin is at its feet while the authoritative gameplay
     // transform is at the centre of the pawn's collision volume. Derive the
@@ -323,6 +411,11 @@ bool Pawn::IsAirborne() const
 float Pawn::GetJumpHeight() const
 {
     return jumpHeight;
+}
+
+float Pawn::GetJumpVerticalVelocity() const
+{
+    return jumpVerticalVelocity;
 }
 
 bool Pawn::ConsumeInteractPulse()

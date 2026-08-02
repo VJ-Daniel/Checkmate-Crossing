@@ -502,6 +502,13 @@ namespace PieceMeshFactory
         /// A skirt in place of legs, for the robed figures.
         Robe,
 
+        /// A figure carried by another model: the pawn sitting on the horse.
+        ///
+        /// It hangs off the horse's Body, so every bounce and rock the horse
+        /// makes carries the rider with it and the two can never drift
+        /// apart. Its own arms hang off this in turn.
+        Rider,
+
         LeftArm,
         RightArm,
 
@@ -529,6 +536,16 @@ namespace PieceMeshFactory
         /// its parent is the difference between the two pivots, and only the
         /// rig can work that out.
         glm::vec3 pivot = glm::vec3(0.0f);
+
+        /// The joint this part hangs off.
+        ///
+        /// Carried per model rather than derived from the joint's identity,
+        /// because the same joint does not always hang off the same thing: a
+        /// standing figure's arms follow its torso, while a rider's follow
+        /// the rider, which itself follows the horse. One static map cannot
+        /// express both, and guessing from the joint name is how a rider
+        /// ends up swinging from the horse's ribs.
+        PieceJoint parent = PieceJoint::Root;
     };
 
     /// A finished animated model: one mesh per joint, plus the same

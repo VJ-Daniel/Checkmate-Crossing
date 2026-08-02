@@ -63,6 +63,47 @@ public:
     /// falls back to the placeholder cube and everything else still works.
     void AttachRig(PieceMeshLibrary& meshLibrary);
 
+    //-----------------------------------------------------------
+    // Which character the player is
+    //
+    // The player is always this one Pawn object -- position, level
+    // reference, checkpoint and camera all belong to it and survive a
+    // change of character. Only the body and the banked ability change.
+    //-----------------------------------------------------------
+
+    /// Becomes another chess character in place.
+    ///
+    /// Swaps the model, the animation body plan, the shadow and the
+    /// footprint used to resolve the playable bounds, then clears any
+    /// ability the previous character had running and banks whichever one
+    /// the new character is entitled to.
+    ///
+    /// Deliberately does not touch position, velocity, spawn point or the
+    /// level reference: switching character is not respawning.
+    ///
+    /// Knight is rejected. It is the riderless horse, which is a collectible
+    /// ally rather than something the player becomes -- MountedPawn is the
+    /// playable mounted character.
+    void SetCharacter(PieceType character, PieceMeshLibrary& meshLibrary);
+
+    PieceType GetCharacter() const;
+
+    /// Which ability a character carries, or false when it has none.
+    ///
+    /// The one place the mapping lives. Pawn walks with no ability at all,
+    /// the King has none implemented yet, and the mounted pawn inherits the
+    /// horse's speed and hazard immunity because that is what riding one
+    /// does -- it is not the standalone Knight's own ability slot.
+    static bool GetCharacterAbility(
+        PieceType character,
+        PieceType& abilityType);
+
+    /// Drops every ability effect and anything banked but unused.
+    ///
+    /// Called on a character switch so a Rook shield or a Knight's immunity
+    /// cannot survive onto a body that should not have it.
+    void ClearAbilityState();
+
     /// The parts to draw, or empty when the pawn is still a cube.
     const std::vector<std::shared_ptr<SceneNode>>& GetRigParts() const;
 
@@ -131,6 +172,11 @@ public:
     /// a substitute for whatever height threshold Kaung's collision uses
     /// to decide a jump cleared something.
     float GetJumpHeight() const;
+
+    /// Vertical speed of the jump: positive climbing, negative falling,
+    /// zero on the ground. Read by the animation to tell pushing off from
+    /// hanging in the air; it changes nothing about the jump itself.
+    float GetJumpVerticalVelocity() const;
 
     //-----------------------------------------------------------
     // Interaction (E)
@@ -232,6 +278,16 @@ private:
     std::unique_ptr<PieceRig> rig;
 
     std::unique_ptr<PieceAnimator> animator;
+
+    /// Which chess character the player currently wears.
+    PieceType character = PieceType::Pawn;
+
+    /// Half the character's width, used to resolve the playable bounds.
+    ///
+    /// A member rather than GameConfig::PawnWidth directly, because the
+    /// characters are not all the same size and the bounds have to follow
+    /// whichever body the player is currently in.
+    float footprintRadius = 0.0f;
 
     glm::vec3 spawnPosition;
 

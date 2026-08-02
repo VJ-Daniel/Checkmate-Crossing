@@ -104,7 +104,8 @@ public:
     void SetMovementState(
         bool isMoving,
         bool isGrounded,
-        float speedScale = 1.0f);
+        float speedScale = 1.0f,
+        float verticalVelocity = 0.0f);
 
     /// Advances the animation. Does nothing without a rig.
     void Update(float deltaTime) override;
@@ -136,6 +137,8 @@ private:
     bool grounded = true;
 
     float speedScale = 1.0f;
+
+    float verticalVelocity = 0.0f;
 
     float headingDegrees = 0.0f;
 

@@ -59,14 +59,6 @@ public:
 
 private:
 
-    /// Which joint a joint hangs off.
-    ///
-    /// Fixed by identity rather than stored per model: an arm always follows
-    /// the body, and a leg always follows the root so the body's lean and
-    /// twist do not drag the feet round with it.
-    static PieceMeshFactory::PieceJoint GetParent(
-        PieceMeshFactory::PieceJoint joint);
-
     std::array<
         std::shared_ptr<SceneNode>,
         PieceMeshFactory::PieceJointCount> joints;

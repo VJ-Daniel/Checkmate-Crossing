@@ -68,6 +68,21 @@ namespace PieceAnimationTuning
     inline constexpr float NeckNodDegrees = 5.0f;
 
     //---------------------------------------------------------
+    // Mounted rider. Secondary motion only: the rider already inherits the
+    // horse's bounce through the hierarchy, so these are the small extra
+    // movements on top of it - too much and he stops looking seated.
+    //---------------------------------------------------------
+
+    /// Rock of the rider's torso against the horse's gait.
+    inline constexpr float RiderRockDegrees = 3.5f;
+
+    /// Swing of the rider's arms on the reins.
+    inline constexpr float RiderArmDegrees = 4.5f;
+
+    /// How far the rider leans forward over a jump.
+    inline constexpr float RiderJumpLeanDegrees = 12.0f;
+
+    //---------------------------------------------------------
     // Jump pose. A held pose rather than a cycle: the piece is in the air
     // for however long the gameplay says, and the body simply reads as
     // airborne for all of it.
@@ -89,6 +104,29 @@ namespace PieceAnimationTuning
 
     /// Head and neck come up over the obstacle.
     inline constexpr float JumpNeckDegrees = -14.0f;
+
+    //---------------------------------------------------------
+    // Take-off against hang time.
+    //
+    // A jump is not one pose. Pushing off, the legs drive down and the body
+    // stretches up; past the apex they tuck. Both come from the vertical
+    // velocity the movement code already tracks, so the change is continuous
+    // and needs no timer of its own to stay in step with the real arc.
+    //---------------------------------------------------------
+
+    /// Vertical speed treated as a full-strength launch. Roughly the speed
+    /// a jump actually leaves the ground at, so the push reads at its
+    /// strongest exactly when the pawn is climbing hardest.
+    inline constexpr float LaunchReferenceSpeed = 4.2f;
+
+    /// How far the legs drive down as the figure pushes off.
+    inline constexpr float LaunchLegPushDegrees = -16.0f;
+
+    /// Upward stretch of the whole figure during the push, in world units.
+    inline constexpr float LaunchStretchHeight = 0.035f;
+
+    /// The horse drives its legs down harder than a figure does.
+    inline constexpr float LaunchHorseLegPushDegrees = -24.0f;
 
     /// Seconds to blend fully into or out of a state. Short enough to feel
     /// responsive, long enough that landing does not snap.
@@ -134,11 +172,15 @@ public:
     /// speedScale stretches the stride rate with the piece's actual speed,
     /// so a piece under a speed boost does not moonwalk. Pass 1 for a piece
     /// moving at its normal pace.
+    /// verticalVelocity separates pushing off from hanging in the air. Zero
+    /// is a perfectly acceptable answer for anything that has no jump
+    /// physics - the pose simply holds its airborne shape throughout.
     void Update(
         float deltaTime,
         bool isMoving,
         bool isGrounded,
-        float speedScale = 1.0f);
+        float speedScale = 1.0f,
+        float verticalVelocity = 0.0f);
 
     PieceAnimationState GetState() const;
 
@@ -152,7 +194,9 @@ private:
 
     void BuildWalkPose(PiecePose& pose, float weight) const;
 
-    void BuildJumpPose(PiecePose& pose, float weight) const;
+    /// launch is 1 while driving off the ground and 0 at the apex and
+    /// below; the tucked pose is simply what is left over.
+    void BuildJumpPose(PiecePose& pose, float weight, float launch) const;
 
     PieceBodyPlan bodyPlan;
 

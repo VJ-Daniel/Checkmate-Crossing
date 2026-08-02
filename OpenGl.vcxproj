@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Src\Gameplay\CageMeshFactory.cpp" />
+    <ClCompile Include="Src\Gameplay\Cheat.cpp" />
     <ClCompile Include="Src\Gameplay\CheckpointGate.cpp" />
     <ClCompile Include="Src\Gameplay\ChessPiece.cpp" />
     <ClCompile Include="Src\Gameplay\CollectibleManager.cpp" />
@@ -59,6 +60,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Src\Gameplay\CageMeshFactory.h" />
+    <ClInclude Include="Src\Gameplay\Cheat.h" />
     <ClInclude Include="Src\Gameplay\CheckpointGate.h" />
     <ClInclude Include="Src\Gameplay\ChessPiece.h" />
     <ClInclude Include="Src\Gameplay\CollectibleManager.h" />
