@@ -435,8 +435,7 @@ void Game::BuildLevelHazards()
     // hazard here, matching the GDD's map.
 
     // Cannonball section (3 rows): a repeating cannonball sweep at the
-    // middle row, plus RollingRock rolling lengthwise (along Z) through
-    // the whole span at a fixed X lane clear of the sweep.
+    // middle row.
     {
         auto rows = FindConsecutiveRowsOfType(*level, LaneType::Cannonball);
 
@@ -457,27 +456,6 @@ void Game::BuildLevelHazards()
                         glm::vec3(-range, y, z),
                         glm::vec3(range, y, z),
                         5.5f,
-                        false);
-                });
-        }
-
-        if (!rows.empty() && rows.front() && rows.back())
-        {
-            const float y = rows.front()->GetSurfaceHeight();
-            const float startZ = rows.front()->GetCenterZ();
-            const float endZ = rows.back()->GetCenterZ();
-            const float x = -halfWidth * 0.44f;
-
-            // "A slow vertical projectile with a large hit area."
-            hazardManager->RegisterRepeatingSpawn(
-                4.0f,
-                [this, y, x, startZ, endZ]()
-                {
-                    hazardManager->SpawnLinearHazard(
-                        HazardType::RollingRock,
-                        glm::vec3(x, y, startZ),
-                        glm::vec3(x, y, endZ),
-                        1.2f,
                         false);
                 });
         }
@@ -504,8 +482,8 @@ void Game::BuildLevelHazards()
     // FireballLightning section (3 rows): a repeating curved Fireball
     // sweep (burn patches are already automatic in HazardManager::Update),
     // two Lightning warning zones flanking a clear centre corridor, and
-    // RollingLog rolling through the whole span at a lane opposite
-    // RollingRock, faster and with a smaller hit area per the GDD.
+    // RollingLog rolling through the whole span, faster and with a
+    // smaller hit area than the Rolling Rock gauntlet below, per the GDD.
     {
         auto rows = FindConsecutiveRowsOfType(*level, LaneType::FireballLightning);
 
@@ -561,6 +539,52 @@ void Game::BuildLevelHazards()
                         2.2f,
                         false);
                 });
+        }
+    }
+
+    // Rolling Rock gauntlet: three boulders roll the length of the field
+    // from just outside the King's Cage back toward the Checkpoint,
+    // reading as the battlefield collapsing in behind the player rather
+    // than a short preview confined to one section.
+    //
+    // Playtest feedback: a single rock rolling only through the 3-row
+    // Cannonball section didn't read as a real threat. Moving the start
+    // to the King's Cage and adding two more lanes gives it the length
+    // and coverage to feel like one.
+    {
+        auto kingsCageRows = FindConsecutiveRowsOfType(*level, LaneType::KingsCage);
+        const int checkpointRow = level->FindRowOfType(LaneType::Checkpoint);
+
+        const Lane* startLane = kingsCageRows.empty() ? nullptr : kingsCageRows.back();
+        const Lane* endLane = level->GetLane(checkpointRow);
+
+        if (startLane && endLane)
+        {
+            const float y = startLane->GetSurfaceHeight();
+            const float startZ = startLane->GetCenterZ();
+            const float endZ = endLane->GetCenterZ();
+
+            const float lanesX[3] =
+            {
+                -halfWidth * 0.5f,
+                0.0f,
+                halfWidth * 0.5f
+            };
+
+            for (float x : lanesX)
+            {
+                hazardManager->RegisterRepeatingSpawn(
+                    6.0f,
+                    [this, y, x, startZ, endZ]()
+                    {
+                        hazardManager->SpawnLinearHazard(
+                            HazardType::RollingRock,
+                            glm::vec3(x, y, startZ),
+                            glm::vec3(x, y, endZ),
+                            1.2f,
+                            false);
+                    });
+            }
         }
     }
 }
