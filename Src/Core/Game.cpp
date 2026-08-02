@@ -697,7 +697,9 @@ bool Game::TryInteractWithCheckpointGate(const glm::vec3& pawnPosition)
 
 bool Game::TryInteractWithKingsCage(const glm::vec3& pawnPosition)
 {
-    if (!kingsCage || !kingsCage->GetDoor())
+    if (!kingsCage ||
+        !kingsCage->GetLeftDoor() ||
+        !kingsCage->GetRightDoor())
         return false;
 
     const float distance = glm::length(
@@ -729,16 +731,23 @@ void Game::UpdateDoors(float deltaTime)
 
     if (kingsCageDoorOpening && kingsCage)
     {
-        if (WorldObject* door = kingsCage->GetDoor())
+        WorldObject* leftDoor = kingsCage->GetLeftDoor();
+        WorldObject* rightDoor = kingsCage->GetRightDoor();
+
+        if (leftDoor && rightDoor)
         {
             kingsCageDoorAngle = std::min(
                 kingsCageDoorAngle + GameConfig::DoorOpenSpeed * deltaTime,
                 GameConfig::KingsCageMaxDoorAngle);
 
-            // The door's origin is authored on its own hinge (see
-            // CageMetrics::DoorHingeX/Y/Z), so a plain Y rotation is the
-            // entire animation, the same way CheckpointGate's leaves work.
-            door->GetTransform().SetRotation(
+            // The entrance faces +Z. The left leaf extends +X from its outer
+            // hinge, so negative Y sends its free edge toward +Z; the right
+            // leaf extends -X and needs the opposite sign. Both therefore
+            // swing outward, away from the cage interior at -Z.
+            leftDoor->GetTransform().SetRotation(
+                0.0f, -kingsCageDoorAngle, 0.0f);
+
+            rightDoor->GetTransform().SetRotation(
                 0.0f, kingsCageDoorAngle, 0.0f);
 
             if (kingsCageDoorAngle >= GameConfig::KingsCageMaxDoorAngle)
@@ -941,9 +950,8 @@ void Game::Render()
         }
     }
 
-    // The frame is the cage's root mesh. The barred door is deliberately a
-    // second object with its origin on the hinge, ready for a future rescue
-    // animation without changing either mesh.
+    // The frame is the cage's root mesh. Each barred leaf is a separate
+    // object with its origin on its outer hinge.
     if (kingsCage)
         renderer->Draw(*kingsCage);
 
@@ -952,8 +960,11 @@ void Game::Render()
 
     if (kingsCage)
     {
-        if (WorldObject* door = kingsCage->GetDoor())
-            renderer->Draw(*door);
+        if (WorldObject* leftDoor = kingsCage->GetLeftDoor())
+            renderer->Draw(*leftDoor);
+
+        if (WorldObject* rightDoor = kingsCage->GetRightDoor())
+            renderer->Draw(*rightDoor);
     }
 
     for (const auto& piece : showcasePieces)

@@ -277,8 +277,7 @@ namespace GameConfig
     /// How fast a door swings open, in degrees per second.
     constexpr float DoorOpenSpeed = 90.0f;
 
-    /// The King's Cage door has no MaxDoorAngle of its own (unlike
-    /// CheckpointGate) since nothing has driven it open before now.
-    /// Matches the checkpoint gate's convention.
+    /// Both King's Cage leaves use this shared opening-angle magnitude with
+    /// opposite signs. Matches the checkpoint gate's 90-degree convention.
     constexpr float KingsCageMaxDoorAngle = 90.0f;
 }

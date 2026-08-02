@@ -219,8 +219,8 @@ private:
     std::shared_ptr<CheckpointGate> checkpointGate;
 
     /// Final visual objective. The King remains a normal ChessPiece rather
-    /// than being baked into the cage, and the door is a separate mesh owned
-    /// by KingsCage so future rescue behavior can rotate it around its hinge.
+    /// than being baked into the cage, and both door leaves are separate
+    /// meshes owned by KingsCage so they rotate around their outer hinges.
     std::shared_ptr<KingsCage> kingsCage;
 
     std::shared_ptr<ChessPiece> capturedKing;
@@ -233,9 +233,9 @@ private:
     /// reached CheckpointGate::GetMaxDoorAngle() yet.
     bool checkpointGateOpening = false;
 
-    /// Same idea for the king's cage door, which -- unlike the checkpoint
-    /// gate -- has no angle getter of its own, so the angle is tracked
-    /// here instead.
+    /// Same idea for the king's cage doors. Both share one opening-angle
+    /// magnitude with opposite rotation signs, tracked here rather than on
+    /// either individual leaf.
     bool kingsCageDoorOpening = false;
 
     float kingsCageDoorAngle = 0.0f;
