@@ -115,6 +115,7 @@ bool Game::Initialize(
     spriteRenderer->SetScreenSize(screenWidth, screenHeight);
 
     LoadLightningSprites();
+    LoadFireballSprites();
 
     level = std::make_shared<Level>();
     level->Build();
@@ -513,6 +514,44 @@ void Game::SpawnExampleHazards()
                 1.0f);
         }
     }
+
+    // Fireball: curved projectile that leaves a temporary impact zone when
+    // it reaches its destination. HazardManager handles the lingering zone;
+    // AppendFireballSprites draws both phases from the sprite pack.
+    {
+        const int row = level->FindRowOfType(LaneType::FireballLightning);
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            const float y = lane->GetSurfaceHeight();
+            const float z = lane->GetCenterZ() - 1.0f;
+            const float range = halfWidth * 0.65f;
+
+            hazardManager->RegisterRepeatingSpawn(
+                4.5f,
+                [this, y, z, range]()
+                {
+                    hazardManager->SpawnCurvedHazard(
+                        HazardType::Fireball,
+                        glm::vec3(-range, y, z),
+                        glm::vec3(range, y, z),
+                        3.2f,
+                        1.0f);
+                });
+
+            hazardManager->RegisterRepeatingSpawn(
+                5.0f,
+                [this, y, z, range]()
+                {
+                    hazardManager->SpawnCurvedHazard(
+                        HazardType::Fireball,
+                        glm::vec3(range, y, z - 1.0f),
+                        glm::vec3(-range, y, z - 1.0f),
+                        3.2f,
+                        -1.0f);
+                });
+        }
+    }
 }
 
 void Game::SpawnExampleCollectibles()
@@ -578,6 +617,32 @@ void Game::LoadLightningSprites()
     ResourceManager::LoadTexture(
         "lightning_warning_circle",
         "Src/Assets/Sprites/Warning/red_circle.png");
+}
+
+void Game::LoadFireballSprites()
+{
+    for (int frame = 1; frame <= 8; ++frame)
+    {
+        const std::string frameNumber =
+            frame < 10
+            ? "0" + std::to_string(frame)
+            : std::to_string(frame);
+
+        ResourceManager::LoadTexture(
+            NumberedTextureName("fire_spell", frame),
+            "Src/Assets/Sprites/Fire_Spell/Fire Spell_Frame_" +
+                frameNumber + ".png");
+    }
+
+    for (int frame = 1; frame <= 10; ++frame)
+    {
+        ResourceManager::LoadTexture(
+            NumberedTextureName("fireball_explosion", frame),
+            NumberedTexturePath(
+                "Circle_explosion",
+                "Circle_explosion",
+                frame));
+    }
 }
 
 void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
@@ -681,6 +746,79 @@ void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
 
         if (t >= 0.9f)
             frameSprites.push_back(explosion);
+    }
+}
+
+void Game::AppendFireballSprites(std::vector<Sprite>& frameSprites) const
+{
+    if (!hazardManager)
+        return;
+
+    for (const auto& hazard : hazardManager->GetHazards())
+    {
+        if (!hazard)
+            continue;
+
+        const Hazard* hazardVisual =
+            dynamic_cast<const Hazard*>(&hazard->GetVisual());
+
+        if (!hazardVisual ||
+            hazardVisual->GetType() != HazardType::Fireball)
+        {
+            continue;
+        }
+
+        const glm::vec3 ground = hazard->GetVisual().GetGroundPosition();
+
+        if (hazard->GetMovementPattern() ==
+            HazardMovementPattern::CurvedSweep)
+        {
+            const float duration =
+                std::max(hazard->GetCurveDuration(), 0.001f);
+            const float t = std::clamp(
+                hazard->GetCurveElapsed() / duration,
+                0.0f,
+                1.0f);
+            const int frame = std::clamp(
+                1 + static_cast<int>(t * 8.0f),
+                1,
+                8);
+
+            Sprite fireball = Sprite::CreateBillboard(
+                NumberedTextureName("fire_spell", frame),
+                ground + glm::vec3(0.0f, 0.75f, 0.0f),
+                glm::vec2(1.6f, 0.9f));
+
+            fireball.flipX = hazard->GetVelocity().x > 0.0f;
+            fireball.layer = 24;
+            frameSprites.push_back(fireball);
+            continue;
+        }
+
+        if (hazard->GetMovementPattern() ==
+            HazardMovementPattern::TemporaryZone)
+        {
+            const float duration =
+                std::max(hazard->GetZoneDuration(), 0.001f);
+            const float t = std::clamp(
+                hazard->GetZoneElapsed() / duration,
+                0.0f,
+                1.0f);
+            const int frame = std::clamp(
+                1 + static_cast<int>(t * 10.0f),
+                1,
+                10);
+
+            Sprite impact = Sprite::CreateGroundDecal(
+                NumberedTextureName("fireball_explosion", frame),
+                ground,
+                glm::vec2(3.5f, 3.5f));
+
+            impact.opacity = 0.95f;
+            impact.layer = 18;
+
+            frameSprites.push_back(impact);
+        }
     }
 }
 
@@ -871,6 +1009,7 @@ void Game::Render()
     // from their timing state.
     std::vector<Sprite> frameSprites = sprites;
     AppendLightningSprites(frameSprites);
+    AppendFireballSprites(frameSprites);
 
     if (spriteRenderer)
         spriteRenderer->DrawAll(frameSprites);
