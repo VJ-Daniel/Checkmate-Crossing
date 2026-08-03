@@ -116,13 +116,15 @@ MovingHazard& HazardManager::SpawnTemporaryZone(
 
 MovingHazard& HazardManager::SpawnCow(
     const glm::vec3& startGroundPosition,
-    float maxSpeed)
+    float maxSpeed,
+    float detectionRange,
+    float followDistance)
 {
     auto visual = meshLibrary.CreateObstacle(ObstacleType::Cow);
     visual->SetGroundPosition(startGroundPosition);
 
     auto hazard = std::make_unique<MovingHazard>(visual);
-    hazard->SetFollowTarget(maxSpeed);
+    hazard->SetFollowTarget(maxSpeed, detectionRange, followDistance);
 
     hazards.push_back(std::move(hazard));
 
