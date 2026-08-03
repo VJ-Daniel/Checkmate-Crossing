@@ -95,8 +95,15 @@ namespace
             // Force exact collision size for Mud and Bush
             if (type == ObstacleType::Mud)
             {
-                // Mud is 0.8 wide and 0.3 tall. 
-                comp.SetBox(center, glm::vec3(0.4f, 0.15f, 0.4f));
+                // The puddle is intentionally almost flat visually, but its
+                // gameplay volume stays 0.3 high so crossing it reliably
+                // registers the slow while matching the visible footprint.
+                const glm::vec3 mudCenter =
+                    position + glm::vec3(0.0f, 0.15f, 0.0f);
+
+                comp.SetBox(
+                    mudCenter,
+                    glm::vec3(0.475f, 0.15f, 0.425f));
             }
             else if (type == ObstacleType::Bush)
             {
@@ -179,7 +186,17 @@ void HazardCollision::CheckMovingHazards(
         if (pawnCollision.Intersects(hazardCollision))
         {
             const Hazard* hazardVisual = dynamic_cast<const Hazard*>(&visual);
-            HazardType type = hazardVisual ? hazardVisual->GetType() : HazardType::Arrow;
+            const StaticObstacle* obstacleVisual =
+                dynamic_cast<const StaticObstacle*>(&visual);
+
+            const bool isCow = obstacleVisual &&
+                obstacleVisual->GetType() == ObstacleType::Cow;
+
+            const HazardType type = isCow
+                ? HazardType::Cow
+                : (hazardVisual
+                    ? hazardVisual->GetType()
+                    : HazardType::Arrow);
 
             // Determine damage and effects based on hazard type
             float damage = 1.0f;
@@ -190,6 +207,15 @@ void HazardCollision::CheckMovingHazards(
             glm::vec3 velocity = hazard->GetVelocity();
             if (glm::length(velocity) > 0.01f)
                 knockbackDir = glm::normalize(velocity);
+
+            // The cow is a moving environmental blocker rather than a
+            // damaging projectile. Mark its knockback separately so the
+            // pawn's brief post-hit protection behaves as intended.
+            if (isCow)
+            {
+                ApplyDamage(0.0f, knockbackDir, knockback, true);
+                continue;
+            }
 
             // If shield is available, consume it instead of taking damage
             if (pawn->HasShield())
@@ -402,7 +428,11 @@ void HazardCollision::CheckAreaHazards(
     }
 }
 
-bool HazardCollision::ApplyDamage(float damage, const glm::vec3& direction, float knockback)
+bool HazardCollision::ApplyDamage(
+    float damage,
+    const glm::vec3& direction,
+    float knockback,
+    bool isCow)
 {
     if (damageCooldownRemaining > 0.0f)
         return false;
@@ -426,7 +456,7 @@ bool HazardCollision::ApplyDamage(float damage, const glm::vec3& direction, floa
         glm::vec3 bounceDir = glm::normalize(glm::vec3(knockbackDir.x, 0.8f, knockbackDir.z));
         // --------------------------------------------------------------------
 
-        onKnockback(bounceDir * knockback, false);
+        onKnockback(bounceDir * knockback, isCow);
     }
 
     damageCooldownRemaining = damageCooldown;

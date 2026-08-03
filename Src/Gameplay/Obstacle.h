@@ -16,7 +16,7 @@ enum class ObstacleType
     Bush,
     Spikes,
     Cow,
-    Mud,     
+    Mud,
     Palisade
 };
 
@@ -38,7 +38,7 @@ enum class HazardType
     Cow      
 };
 
-constexpr int ObstacleTypeCount = 9; // Updated from 8 to 9
+constexpr int ObstacleTypeCount = 9;
 
 constexpr int HazardTypeCount = 8; // Updated from 7 to 8
 

@@ -111,7 +111,12 @@ void Pawn::Update(float deltaTime)
 
     // A hit pushes the pawn for a moment, during which input is ignored.
     if (knockbackTimer > 0.0f)
+    {
         knockbackTimer -= deltaTime;
+
+        if (knockbackTimer <= 0.0f)
+            knockedBackByCow = false;
+    }
 
     HandleInput();
 

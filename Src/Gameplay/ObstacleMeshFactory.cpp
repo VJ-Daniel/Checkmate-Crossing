@@ -238,20 +238,6 @@ namespace ObstacleMeshFactory
             break;
         }
 
-        case ObstacleType::Mud:
-        {
-            // A flat, muddy brown puddle.
-            builder.SetColor(glm::vec3(0.45f, 0.30f, 0.15f)); // Muddy brown
-
-            // CHANGED: Increased height from 0.15f to 0.30f
-            builder.AddSlabAt(0.0f, 0.0f, 0.8f, 0.8f, 0.0f, 0.30f);
-
-            model.height = 0.30f;  
-            model.footprintWidth = 0.8f;
-            model.footprintDepth = 0.8f;
-            break;
-        }
-
         case ObstacleType::Palisade:
         {
             // A row of sharpened stakes lashed together. The binding rail is
@@ -271,6 +257,25 @@ namespace ObstacleMeshFactory
             model.height = 0.75f;
             model.footprintWidth = 1.00f;
             model.footprintDepth = 0.20f;
+            break;
+        }
+
+        case ObstacleType::Mud:
+        {
+            // A flat, low puddle patch. Deliberately far shorter than every
+            // other stationary prop -- the GDD has mud slow the player, not
+            // block them, so nothing about its silhouette should read as an
+            // obstacle to jump.
+            builder.SetColor(ObstaclePalette::Mud);
+            builder.AddSlabAt(0.0f, 0.0f, 0.95f, 0.85f, 0.0f, 0.05f);
+
+            builder.SetColor(ObstaclePalette::MudWet);
+            builder.AddSlabAt(0.18f, -0.08f, 0.42f, 0.38f, 0.03f, 0.07f);
+            builder.AddSlabAt(-0.22f, 0.14f, 0.30f, 0.28f, 0.02f, 0.06f);
+
+            model.height = 0.07f;
+            model.footprintWidth = 0.95f;
+            model.footprintDepth = 0.85f;
             break;
         }
         }

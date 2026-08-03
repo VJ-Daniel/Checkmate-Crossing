@@ -25,6 +25,8 @@ namespace ObstaclePalette
     inline const glm::vec3 Iron = glm::vec3(0.68f, 0.70f, 0.74f);
     inline const glm::vec3 Hide = glm::vec3(0.90f, 0.89f, 0.86f);
     inline const glm::vec3 HideDark = glm::vec3(0.24f, 0.22f, 0.22f);
+    inline const glm::vec3 Mud = glm::vec3(0.30f, 0.22f, 0.12f);
+    inline const glm::vec3 MudWet = glm::vec3(0.38f, 0.29f, 0.16f);
 }
 
 /// A finished prop model plus the measurements the game needs from it.

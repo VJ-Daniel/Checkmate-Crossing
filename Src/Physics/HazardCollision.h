@@ -80,8 +80,12 @@ private:
     float damageCooldown = 0.5f;
     float damageCooldownRemaining = 0.0f;
 
-    // Apply damage to the pawn (with cooldown check)
-    bool ApplyDamage(float damage, const glm::vec3& direction, float knockback);
+    // Apply damage and/or knockback to the pawn (with cooldown check).
+    bool ApplyDamage(
+        float damage,
+        const glm::vec3& direction,
+        float knockback,
+        bool isCow = false);
 
     // Check block movement
     /// Pushes the pawn clear of one obstacle by the minimum distance and
