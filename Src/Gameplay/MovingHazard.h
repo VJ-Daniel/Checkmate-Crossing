@@ -154,6 +154,14 @@ public:
 
     HazardMovementPattern GetMovementPattern() const;
 
+    /// Current time inside the warning or strike phase. Only meaningful for
+    /// WarningThenStrike hazards such as lightning.
+    float GetPhaseElapsed() const;
+
+    float GetWarningDuration() const;
+
+    float GetStrikeDuration() const;
+
 private:
 
     void UpdateLinearSweep(float deltaTime);

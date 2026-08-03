@@ -11,6 +11,9 @@
 
 #include "Game.h"
 
+#include <algorithm>
+#include <string>
+
 #include "GameConfig.h"
 #include "ResourceManager.h"
 #include "Shader.h"
@@ -48,6 +51,22 @@ namespace
     constexpr float ObstacleSpacing = 1.0f;
 
     constexpr float HazardSpacing = 1.6f;
+
+    std::string NumberedTextureName(
+        const std::string& prefix,
+        int frame)
+    {
+        return prefix + std::to_string(frame);
+    }
+
+    std::string NumberedTexturePath(
+        const std::string& folder,
+        const std::string& prefix,
+        int frame)
+    {
+        return "Src/Assets/Sprites/" + folder + "/" +
+            prefix + std::to_string(frame) + ".png";
+    }
 }
 
 Game::Game()
@@ -94,6 +113,8 @@ bool Game::Initialize(
         return false;
 
     spriteRenderer->SetScreenSize(screenWidth, screenHeight);
+
+    LoadLightningSprites();
 
     level = std::make_shared<Level>();
     level->Build();
@@ -474,6 +495,24 @@ void Game::SpawnExampleHazards()
                 2.5f);
         }
     }
+
+    // Lightning: timed warning marker, then a brief damaging strike. The
+    // hazard itself is a transform-only anchor; AppendLightningSprites draws
+    // its warning, bolt and impact frames from the sprite pack.
+    {
+        const int row = level->FindRowOfType(LaneType::FireballLightning);
+
+        if (const Lane* lane = level->GetLane(row))
+        {
+            hazardManager->SpawnWarningHazard(
+                glm::vec3(
+                    0.0f,
+                    lane->GetSurfaceHeight(),
+                    lane->GetCenterZ()),
+                0.50f,
+                1.0f);
+        }
+    }
 }
 
 void Game::SpawnExampleCollectibles()
@@ -507,6 +546,141 @@ void Game::SpawnExampleCollectibles()
                 allies[index],
                 glm::vec3(x, lane->GetSurfaceHeight(), lane->GetCenterZ()));
         }
+    }
+}
+
+void Game::LoadLightningSprites()
+{
+    for (int frame = 1; frame <= 5; ++frame)
+    {
+        ResourceManager::LoadTexture(
+            NumberedTextureName("lightning_beginning", frame),
+            NumberedTexturePath("Lightning", "Lightning_beginning", frame));
+    }
+
+    for (int frame = 1; frame <= 3; ++frame)
+    {
+        ResourceManager::LoadTexture(
+            NumberedTextureName("lightning_end", frame),
+            NumberedTexturePath("Lightning", "Lightning_end", frame));
+    }
+
+    for (int frame = 1; frame <= 10; ++frame)
+    {
+        ResourceManager::LoadTexture(
+            NumberedTextureName("lightning_explosion", frame),
+            NumberedTexturePath(
+                "Explosion_blue_oval",
+                "Explosion_blue_oval",
+                frame));
+    }
+
+    ResourceManager::LoadTexture(
+        "lightning_warning_circle",
+        "Src/Assets/Sprites/Warning/red_circle.png");
+}
+
+void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
+{
+    if (!hazardManager)
+        return;
+
+    for (const auto& hazard : hazardManager->GetHazards())
+    {
+        if (!hazard ||
+            hazard->GetMovementPattern() !=
+                HazardMovementPattern::WarningThenStrike)
+        {
+            continue;
+        }
+
+        const Hazard* hazardVisual =
+            dynamic_cast<const Hazard*>(&hazard->GetVisual());
+
+        if (!hazardVisual ||
+            hazardVisual->GetType() != HazardType::Lightning)
+        {
+            continue;
+        }
+
+        const glm::vec3 ground = hazard->GetVisual().GetGroundPosition();
+
+        if (!hazard->IsActive())
+        {
+            const float warningDuration =
+                std::max(hazard->GetWarningDuration(), 0.001f);
+            const float warningT = std::clamp(
+                hazard->GetPhaseElapsed() / warningDuration,
+                0.0f,
+                1.0f);
+
+            Sprite warning = Sprite::CreateGroundDecal(
+                "lightning_warning_circle",
+                ground,
+                glm::vec2(2.8f, 2.8f));
+
+            warning.tint = glm::vec3(1.0f, 0.0f, 0.0f);
+            warning.opacity = 0.16f + 0.10f * warningT;
+            warning.layer = 10;
+
+            frameSprites.push_back(warning);
+            continue;
+        }
+
+        const float strikeDuration =
+            std::max(hazard->GetStrikeDuration(), 0.001f);
+        const float t = std::clamp(
+            hazard->GetPhaseElapsed() / strikeDuration,
+            0.0f,
+            1.0f);
+
+        if (t < 0.72f)
+        {
+            const int frame = std::clamp(
+                1 + static_cast<int>((t / 0.72f) * 5.0f),
+                1,
+                5);
+
+            Sprite bolt = Sprite::CreateBillboard(
+                NumberedTextureName("lightning_beginning", frame),
+                ground + glm::vec3(0.0f, 1.45f, 0.0f),
+                glm::vec2(1.0f, 3.0f));
+
+            bolt.layer = 25;
+            frameSprites.push_back(bolt);
+        }
+        else if (t < 0.9f)
+        {
+            const float endT = (t - 0.72f) / 0.18f;
+            const int frame = std::clamp(
+                1 + static_cast<int>(endT * 3.0f),
+                1,
+                3);
+
+            Sprite bolt = Sprite::CreateBillboard(
+                NumberedTextureName("lightning_end", frame),
+                ground + glm::vec3(0.0f, 1.45f, 0.0f),
+                glm::vec2(1.0f, 3.0f));
+
+            bolt.layer = 25;
+            frameSprites.push_back(bolt);
+        }
+
+        const int explosionFrame = std::clamp(
+            1 + static_cast<int>(((std::max(t, 0.9f) - 0.9f) / 0.8f) * 10.0f),
+            1,
+            10);
+
+        Sprite explosion = Sprite::CreateGroundDecal(
+            NumberedTextureName("lightning_explosion", explosionFrame),
+            ground,
+            glm::vec2(12.0f, 12.0f));
+
+        explosion.opacity = 0.9f;
+        explosion.layer = 20;
+
+        if (t >= 0.9f)
+            frameSprites.push_back(explosion);
     }
 }
 
@@ -692,11 +866,14 @@ void Game::Render()
     // Sprites last, after every opaque mesh.
     //
     // They are transparent and do not write depth, so anything drawn after
-    // them would ignore them and punch straight through. DrawAll brackets its
-    // own GL state and returns immediately while the list is empty, which it
-    // is until sprite assets exist.
+    // them would ignore them and punch straight through. Persistent sprites
+    // live in `sprites`; hazard VFX are rebuilt into this frame-local list
+    // from their timing state.
+    std::vector<Sprite> frameSprites = sprites;
+    AppendLightningSprites(frameSprites);
+
     if (spriteRenderer)
-        spriteRenderer->DrawAll(sprites);
+        spriteRenderer->DrawAll(frameSprites);
 }
 
 std::size_t Game::AddSprite(const Sprite& sprite)

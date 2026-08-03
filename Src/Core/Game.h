@@ -157,6 +157,14 @@ private:
     /// collectible allies. Delete once Liyuu's level data places these.
     void SpawnExampleCollectibles();
 
+    /// Loads the individual PNG frames used by the lightning warning,
+    /// strike and impact sprites.
+    void LoadLightningSprites();
+
+    /// Adds per-frame lightning sprites for active lightning hazards.
+    /// These are rebuilt every Render call from the hazard timing state.
+    void AppendLightningSprites(std::vector<Sprite>& frameSprites) const;
+
     std::shared_ptr<Camera3D> camera;
 
     std::shared_ptr<MeshRenderer> renderer;

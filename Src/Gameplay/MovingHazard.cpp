@@ -408,3 +408,18 @@ HazardMovementPattern MovingHazard::GetMovementPattern() const
 {
     return pattern;
 }
+
+float MovingHazard::GetPhaseElapsed() const
+{
+    return phaseElapsed;
+}
+
+float MovingHazard::GetWarningDuration() const
+{
+    return warningDuration;
+}
+
+float MovingHazard::GetStrikeDuration() const
+{
+    return strikeDuration;
+}
