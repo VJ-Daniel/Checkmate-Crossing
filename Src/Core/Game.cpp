@@ -956,6 +956,17 @@ void Game::Update(float deltaTime)
             hazardManager->GetHazards(),
             stationaryHazards,
             deltaTime);
+
+        // The checkpoint gate is a structure, not a hazard: its walls and
+        // leaves only need to be solid. Rebuilt from the gate every frame so
+        // the leaves' boxes follow the swing, which is what keeps the
+        // collision and the opening animation in step.
+        if (checkpointGate)
+        {
+            gateCollisionBoxes.clear();
+            checkpointGate->AppendCollisionBoxes(gateCollisionBoxes);
+            hazardCollision->BlockAgainstBoxes(gateCollisionBoxes);
+        }
     }
 
     // TEMPORARY: stands in for Kaung's real collision detection.

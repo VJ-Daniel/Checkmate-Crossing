@@ -433,6 +433,51 @@ bool HazardCollision::ApplyDamage(float damage, const glm::vec3& direction, floa
     return true;
 }
 
+void HazardCollision::RefreshPawnVolume()
+{
+    if (!pawn)
+        return;
+
+    // Recalculate the pawn's collision box size every frame
+    const float pawnWidth = 0.4f;
+    const float pawnHeight = 0.6f;
+
+    pawnCollision.SetBox(
+        pawn->GetTransform().GetPosition(),
+        glm::vec3(pawnWidth * 0.4f, pawnHeight * 0.4f, pawnWidth * 0.4f));
+}
+
+void HazardCollision::BlockAgainst(const CollisionBox& obstacle)
+{
+    CollisionComponent component;
+    component.SetBox(obstacle.center, obstacle.halfExtents);
+
+    BlockAgainst(component);
+}
+
+void HazardCollision::BlockAgainstBoxes(const std::vector<CollisionBox>& boxes)
+{
+    if (!pawn)
+        return;
+
+    for (const CollisionBox& box : boxes)
+    {
+        // Re-read the pawn between volumes. Resolving against one box moves
+        // it, so testing the rest against a stale position would push it
+        // back out of a wall it is no longer inside - which is how a corner
+        // between two solids turns into a rattle.
+        RefreshPawnVolume();
+
+        if (!pawnCollision.Intersects(
+            CollisionBox{ box.center, box.halfExtents }))
+        {
+            continue;
+        }
+
+        BlockAgainst(box);
+    }
+}
+
 void HazardCollision::BlockAgainst(const CollisionComponent& obstacle)
 {
     if (!pawn)

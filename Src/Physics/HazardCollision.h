@@ -23,6 +23,17 @@ public:
         const std::vector<std::shared_ptr<StaticObstacle>>& stationaryHazards,
         float deltaTime);
 
+    /// Blocks the pawn against a set of plain solid volumes.
+    ///
+    /// For structures that are not hazards and carry no damage, slow or
+    /// knockback - the checkpoint gate's walls and leaves. They only ever
+    /// need to be solid, so they go through the same resolve as everything
+    /// else rather than growing a parallel collision path of their own.
+    ///
+    /// Refreshes the pawn's own volume first, so it is safe to call either
+    /// side of Update.
+    void BlockAgainstBoxes(const std::vector<CollisionBox>& boxes);
+
     /// Check against moving hazards only
     void CheckMovingHazards(
         const std::vector<std::unique_ptr<MovingHazard>>& hazards);
@@ -76,4 +87,9 @@ private:
     /// Pushes the pawn clear of one obstacle by the minimum distance and
     /// reports the push, so the listener can cancel just that axis.
     void BlockAgainst(const CollisionComponent& obstacle);
+
+    void BlockAgainst(const CollisionBox& obstacle);
+
+    /// Rebuilds the pawn's own collision volume from its current position.
+    void RefreshPawnVolume();
 };

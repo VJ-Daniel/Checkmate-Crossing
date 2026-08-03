@@ -224,6 +224,10 @@ private:
     /// second gate later on costs a handful of transforms and nothing else.
     std::shared_ptr<CheckpointGate> checkpointGate;
 
+    /// Reused between frames so rebuilding the gate's solid volumes does not
+    /// allocate every tick.
+    std::vector<CollisionBox> gateCollisionBoxes;
+
     /// Final visual objective. The King remains a normal ChessPiece rather
     /// than being baked into the cage, and both door leaves are separate
     /// meshes owned by KingsCage so they rotate around their outer hinges.
