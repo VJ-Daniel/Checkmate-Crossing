@@ -5,6 +5,7 @@
 
 #include "CageMeshFactory.h"
 #include "Camera3D.h"
+#include "Cheat.h"
 #include "CheckpointGate.h"
 #include "ChessPiece.h"
 #include "CollectibleManager.h"
@@ -19,6 +20,7 @@
 #include "PieceMeshFactory.h"
 #include "Sprite.h"
 #include "SpriteRenderer.h"
+#include "HazardCollision.h"
 
 /// Owns the high-level lifetime of one Checkmate Crossing session: the
 /// camera, the world renderer, the battlefield and the player's pawn.
@@ -109,14 +111,6 @@ public:
 
 private:
 
-    /// TEMPORARY: lines the placeholder models up in front of the pawn so
-    /// they can be inspected side by side - chess pieces, then stationary
-    /// props, then hazards, one row each.
-    ///
-    /// Delete this method and its call in Initialize once the level places
-    /// these for real. Nothing else depends on it.
-    void BuildShowcase();
-
     /// Stands one checkpoint gate on the level's checkpoint lane.
     ///
     /// Unlike the showcase this is a real placement, not scaffolding: the
@@ -125,39 +119,72 @@ private:
     /// walk towards it.
     void BuildCheckpointGate();
 
+    /// Draws one chess piece, whether it is a single baked mesh or an
+    /// animated rig made of several.
+    void DrawPiece(const ChessPiece& piece);
+
+    void DrawPawn();
+
     /// Places the visual-only cage and captive King in the final goal area.
     /// Gameplay will later decide when its separate door should open.
     void BuildKingsCage();
-
-    /// Fills one evenly spaced row of a showcase, centred on the board.
-    /// Returns the ground position for the given slot.
-    glm::vec3 GetShowcaseSlot(
-        int lanesAhead,
-        int slot,
-        int slotCount,
-        float spacing) const;
 
     /// Applies the reference game's camera setup: an orthographic camera
     /// tilted down over the battlefield, at the angle and zoom recorded in
     /// GameConfig.
     void ConfigureCamera();
 
-    /// Points the camera at the pawn on start-up and every frame, producing
-    /// the fixed-angle follow view while the pawn moves through the level.
+    /// Advances the fixed-angle camera only when the pawn crosses its X/Z
+    /// dead zone, then clamps the visible ground footprint to the finished
+    /// boundary envelope. Jump height is intentionally visual, not camera
+    /// motion, so a jump inside the lock space leaves the camera still.
     void UpdateCamera();
 
-    /// TEMPORARY: spawns examples of the mesh-backed moving hazards so the
-    /// system is visible before level data decides real placement. Fireball
-    /// and Lightning stay unspawned until their deferred visuals exist.
-    /// Delete this method and its call in Initialize once that lands,
-    /// exactly like BuildShowcase above.
-    void SpawnExampleHazards();
+    /// Places every stationary prop the level's SpikeMud and FenceTree
+    /// sections need, reading real lane rows from `level`.
+    void BuildLevelObstacles();
 
-    /// TEMPORARY: same idea as SpawnExampleHazards, for the four
-    /// collectible allies. Delete once Liyuu's level data places these.
-    void SpawnExampleCollectibles();
+    /// Places every moving hazard's real lane assignment, following the
+    /// GDD's escalation grouping (arrows/spears together, cannonballs/
+    /// rolling rocks together, fireballs/lightning/rolling logs together).
+    void BuildLevelHazards();
+
+    /// Places the four collectible allies just ahead of the section each
+    /// ability is most useful for.
+    void BuildLevelCollectibles();
+
+    //---------------------------------------------------------
+    // Interaction (E)
+    //
+    // Pawn only reports "E was pressed" (ConsumeInteractPulse) since it
+    // has no reference to the checkpoint gate or king's cage door. This is
+    // where that press gets resolved against them, falling back to the
+    // pawn's banked ability if neither is in range.
+    //---------------------------------------------------------
+
+    /// If the pawn is within GameConfig::InteractRadius of the checkpoint
+    /// gate, starts it opening (if closed) and returns true either way --
+    /// standing at the gate means E belongs to it, not the ability.
+    bool TryInteractWithCheckpointGate(const glm::vec3& pawnPosition);
+
+    /// Same idea as TryInteractWithCheckpointGate, for the king's cage
+    /// door.
+    ///
+    /// NOTE(Ayub): this only swings the door open. Whether that should also
+    /// count as rescuing the king / winning the level is Kaung's call
+    /// ("king rescue, win conditions" is his); nothing here decides that.
+    bool TryInteractWithKingsCage(const glm::vec3& pawnPosition);
+
+    /// Advances any door currently mid-open, a handful of degrees per
+    /// second toward fully open. A placeholder tween -- John's animation
+    /// pass owns "checkpoint activation" for real; this just makes E
+    /// functionally open something instead of just changing a flag.
+    void UpdateDoors(float deltaTime);
 
     std::shared_ptr<Camera3D> camera;
+
+    /// Distinguishes the first exact placement from later dead-zone updates.
+    bool cameraFollowInitialized = false;
 
     std::shared_ptr<MeshRenderer> renderer;
 
@@ -169,6 +196,10 @@ private:
     /// in Shutdown, while the GL context is still alive.
     std::shared_ptr<PieceMeshLibrary> pieceMeshes;
 
+    /// Developer-only character switching. Inert unless
+    /// CheatConfig::EnableCheatKeys is on.
+    CheatSystem cheats;
+
     std::shared_ptr<ObstacleMeshLibrary> obstacleMeshes;
 
     std::shared_ptr<GateMeshLibrary> gateMeshes;
@@ -179,9 +210,13 @@ private:
     /// second gate later on costs a handful of transforms and nothing else.
     std::shared_ptr<CheckpointGate> checkpointGate;
 
+    /// Reused between frames so rebuilding the gate's solid volumes does not
+    /// allocate every tick.
+    std::vector<CollisionBox> gateCollisionBoxes;
+
     /// Final visual objective. The King remains a normal ChessPiece rather
-    /// than being baked into the cage, and the door is a separate mesh owned
-    /// by KingsCage so future rescue behavior can rotate it around its hinge.
+    /// than being baked into the cage, and both door leaves are separate
+    /// meshes owned by KingsCage so they rotate around their outer hinges.
     std::shared_ptr<KingsCage> kingsCage;
 
     std::shared_ptr<ChessPiece> capturedKing;
@@ -189,6 +224,17 @@ private:
     std::shared_ptr<HazardManager> hazardManager;
 
     std::shared_ptr<CollectibleManager> collectibleManager;
+
+    /// True while E has started the checkpoint gate opening and it hasn't
+    /// reached CheckpointGate::GetMaxDoorAngle() yet.
+    bool checkpointGateOpening = false;
+
+    /// Same idea for the king's cage doors. Both share one opening-angle
+    /// magnitude with opposite rotation signs, tracked here rather than on
+    /// either individual leaf.
+    bool kingsCageDoorOpening = false;
+
+    float kingsCageDoorAngle = 0.0f;
 
     /// Shared quad and shader for every sprite. Held here so its GL objects
     /// are released in Shutdown, while the context is still alive.
@@ -198,8 +244,11 @@ private:
     /// assets exist.
     std::vector<Sprite> sprites;
 
-    /// TEMPORARY: the showcase rows described above.
-    std::vector<std::shared_ptr<ChessPiece>> showcasePieces;
+    /// Resolves moving hazards and the real stationary level props against
+    /// the pawn every frame.
+    std::unique_ptr<HazardCollision> hazardCollision;
 
-    std::vector<std::shared_ptr<Obstacle>> showcaseObstacles;
+    /// Stationary props placed on the SpikeMud and FenceTree lanes. The same
+    /// instances are rendered and supplied to HazardCollision.
+    std::vector<std::shared_ptr<StaticObstacle>> stationaryHazards;
 };

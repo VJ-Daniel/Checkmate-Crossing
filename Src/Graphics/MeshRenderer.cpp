@@ -61,9 +61,12 @@ void MeshRenderer::Draw(const WorldObject& object)
         "view",
         camera->GetViewMatrix());
 
+    // Through GetWorldMatrix, not the transform directly: a rig part's
+    // transform is relative to its parent, and only the object itself knows
+    // how to resolve that.
     shader->SetMatrix4(
         "model",
-        object.GetTransform().GetModelMatrix());
+        object.GetWorldMatrix());
 
     shader->SetVector4(
         "objectColor",

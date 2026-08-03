@@ -50,6 +50,45 @@ namespace GameConfig
     constexpr float GroundSurface = 0.0f;
 
     //---------------------------------------------------------
+    // Finished outer boundary
+    //---------------------------------------------------------
+
+    /// Clear ground between the playable rectangle and the first decorative
+    /// boundary block. The pawn is constrained by the playable rectangle;
+    /// the blocks begin just outside it and never cover the road.
+    constexpr float BoundaryInnerClearance = 0.25f;
+
+    /// Depth of the dense rock/greenery band outside every map edge. This is
+    /// deliberately wider than a single row: the tilted orthographic camera
+    /// sees several ground units beyond its target, and the finished band is
+    /// the visual envelope used by the camera clamp.
+    constexpr float BoundaryThickness = 4.5f;
+
+    constexpr int BoundaryLayerCount = 5;
+
+    /// Nominal distance between blocks along an edge. Their minimum length
+    /// is larger than this, so the inner silhouette has no direct sight gap.
+    constexpr float BoundaryBlockSpacing = 1.0f;
+
+    constexpr float BoundaryMinHeight = 0.55f;
+    constexpr float BoundaryMaxHeight = 2.15f;
+
+    constexpr float BoundaryMinAlongSize = 1.08f;
+    constexpr float BoundaryMaxAlongSize = 1.34f;
+
+    /// Always wider than the 0.9-unit layer spacing, guaranteeing overlap
+    /// between neighbouring depth rows even before rotation is considered.
+    constexpr float BoundaryMinAcrossSize = 0.94f;
+    constexpr float BoundaryMaxAcrossSize = 1.12f;
+
+    constexpr float BoundaryAlongJitter = 0.035f;
+    constexpr float BoundaryMaxRotationDegrees = 8.0f;
+
+    /// Stable coordinate-hash seed. Boundary variation is identical on
+    /// every launch and independent per edge, layer and block.
+    constexpr unsigned int BoundaryVariationSeed = 20260729u;
+
+    //---------------------------------------------------------
     // Camera
     //
     // The reference game uses an orthographic camera tilted down toward the
@@ -85,6 +124,16 @@ namespace GameConfig
     /// the middle of the screen and leaves the upper two thirds for the road
     /// ahead. The pawn ends up around 65% of the way down the view.
     constexpr float CameraLookAhead = 1.2f;
+
+    /// World-space lock region around the camera target. Movement inside it
+    /// moves the pawn on screen without nudging the camera; crossing an edge
+    /// advances only far enough to put the pawn back on that edge.
+    constexpr float CameraDeadZoneWidth = 2.4f;
+    constexpr float CameraDeadZoneDepth = 1.5f;
+
+    /// Keeps the calculated ground footprint a little inside the nominal
+    /// outer boundary, absorbing floating-point and rasterization slop.
+    constexpr float CameraBoundsInset = 0.12f;
 
     /// Used only when the camera is switched to perspective mode. A narrow
     /// field of view keeps the framing close to the orthographic look.
@@ -201,4 +250,58 @@ namespace GameConfig
 
     /// How close the pawn needs to be to a collectible ally to pick it up.
     constexpr float CollectiblePickupRadius = 0.6f;
+
+    //---------------------------------------------------------
+    // Jumping (GDD section 4: Fence/Rock/Palisade "can be jumped over")
+    //
+    // NOTE(Ayub): the GDD describes the effect (some obstacles can be
+    // jumped over) but not the numbers. Placeholder tuning -- adjust
+    // freely once Kaung's collision has a real height check to clear.
+    //---------------------------------------------------------
+
+    /// Upward speed the instant Space is pressed.
+    constexpr float JumpInitialVelocity = 4.2f;
+
+    /// Downward acceleration applied while airborne. Deliberately snappier
+    /// than real gravity for an arcade feel.
+    constexpr float JumpGravity = 13.0f;
+
+    //---------------------------------------------------------
+    // Interaction (E)
+    //---------------------------------------------------------
+
+    /// How close the pawn needs to be to a door/gate for E to target it
+    /// instead of falling back to the banked ability.
+    constexpr float InteractRadius = 1.6f;
+
+    /// How fast a door swings open, in degrees per second.
+    constexpr float DoorOpenSpeed = 90.0f;
+
+    /// Both King's Cage leaves use this shared opening-angle magnitude with
+    /// opposite signs. Matches the checkpoint gate's 90-degree convention.
+    constexpr float KingsCageMaxDoorAngle = 90.0f;
+
+
+    // Collision Configuration
+    //
+    //---------------------------------------------------------
+    
+    // Time after taking damage before the pawn can be damaged again
+    constexpr float DamageCooldown = 0.5f;
+
+    // How far the pawn is knocked back when hit
+    constexpr float KnockbackDistance = 1.5f;
+
+    /// Slow effect duration when walking through mud/bushes
+    constexpr float MudSlowDuration = 2.0f;
+    constexpr float MudSlowAmount = 0.5f;
+
+    /// Fireball burn radius and damage
+    constexpr float FireballBurnRadius = 0.6f;
+    constexpr float FireballBurnDamagePerTick = 0.2f;
+
+    /// Lightning strike
+    constexpr float LightningStrikeRadius = 0.5f;
+    constexpr float LightningDamage = 1.0f;
 }
+

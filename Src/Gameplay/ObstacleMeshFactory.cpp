@@ -122,7 +122,6 @@ namespace ObstacleMeshFactory
             model.footprintWidth = 0.64f;
             break;
         }
-
         case ObstacleType::Fence:
         {
             // Two posts, two rails. Deliberately open, so it reads as a
@@ -145,13 +144,26 @@ namespace ObstacleMeshFactory
         {
             // Solid block with an overhanging cap, which is the whole
             // difference between a wall and a plain box.
+            //
+            // Tall enough to read as a barrier rather than a kerb: the pawn
+            // stands 0.9, so the old 0.78 top sat below its shoulder and the
+            // wall looked like something to step over. Thickness, width and
+            // the cap's overhang are unchanged - only the body grew.
             builder.SetColor(ObstaclePalette::Stone);
-            builder.AddSlabAt(0.0f, 0.0f, 0.94f, 0.28f, 0.0f, 0.64f);
+            builder.AddSlabAt(0.0f, 0.0f, 0.94f, 0.28f, 0.0f, 0.56f);
+
+            // Second course, a shade darker. Without it the taller body is
+            // one flat slab; with it the wall keeps the same block scale it
+            // had before and simply stacks another row.
+            builder.SetColor(ObstaclePalette::Stone * 0.92f);
+            builder.AddSlabAt(0.0f, 0.0f, 0.90f, 0.28f, 0.56f, 1.12f);
 
             builder.SetColor(ObstaclePalette::DarkStone);
-            builder.AddSlabAt(0.0f, 0.0f, 1.02f, 0.34f, 0.64f, 0.78f);
+            builder.AddSlabAt(0.0f, 0.0f, 1.02f, 0.34f, 1.12f, 1.28f);
 
-            model.height = 0.78f;
+            // Reported from the geometry, so the collision box Kaung's
+            // system builds from GetHeight() grows with the wall.
+            model.height = 1.28f;
             model.footprintWidth = 1.02f;
             model.footprintDepth = 0.34f;
             break;
@@ -242,9 +254,28 @@ namespace ObstacleMeshFactory
             builder.SetColor(ObstaclePalette::DarkWood);
             builder.AddSlabAt(0.0f, 0.07f, 1.00f, 0.06f, 0.42f, 0.52f);
 
-            model.height = 0.92f;
+            model.height = 0.75f;
             model.footprintWidth = 1.00f;
             model.footprintDepth = 0.20f;
+            break;
+        }
+
+        case ObstacleType::Mud:
+        {
+            // A flat, low puddle patch. Deliberately far shorter than every
+            // other stationary prop -- the GDD has mud slow the player, not
+            // block them, so nothing about its silhouette should read as an
+            // obstacle to jump.
+            builder.SetColor(ObstaclePalette::Mud);
+            builder.AddSlabAt(0.0f, 0.0f, 0.95f, 0.85f, 0.0f, 0.05f);
+
+            builder.SetColor(ObstaclePalette::MudWet);
+            builder.AddSlabAt(0.18f, -0.08f, 0.42f, 0.38f, 0.03f, 0.07f);
+            builder.AddSlabAt(-0.22f, 0.14f, 0.30f, 0.28f, 0.02f, 0.06f);
+
+            model.height = 0.07f;
+            model.footprintWidth = 0.95f;
+            model.footprintDepth = 0.85f;
             break;
         }
         }
@@ -427,7 +458,23 @@ ObstacleMeshLibrary::ObstacleMeshLibrary()
 
 const ObstacleModel& ObstacleMeshLibrary::GetModel(ObstacleType type)
 {
-    ObstacleModel& model = obstacleModels[static_cast<int>(type)];
+    // FORCE the correct mapping manually so it matches your new switch order!
+    int index = 0;
+    switch (type)
+    {
+    case ObstacleType::Tree:     index = 0; break;
+    case ObstacleType::Rock:     index = 1; break;
+    case ObstacleType::Fence:    index = 2; break;
+    case ObstacleType::Wall:     index = 3; break;
+    case ObstacleType::Bush:     index = 4; break;
+    case ObstacleType::Spikes:   index = 5; break;
+    case ObstacleType::Cow:      index = 6; break;
+    case ObstacleType::Mud:      index = 7; break;
+    case ObstacleType::Palisade: index = 8; break;
+    default:                     index = 0; break;
+    }
+
+    ObstacleModel& model = obstacleModels[index];
 
     if (!model.mesh)
         model = ObstacleMeshFactory::Create(type);

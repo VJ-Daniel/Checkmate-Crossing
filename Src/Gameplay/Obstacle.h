@@ -16,6 +16,7 @@ enum class ObstacleType
     Bush,
     Spikes,
     Cow,
+    Mud,
     Palisade
 };
 
@@ -33,12 +34,13 @@ enum class HazardType
     RollingRock,
     RollingLog,
     Fireball,
-    Lightning
+    Lightning,
+    Cow      
 };
 
-constexpr int ObstacleTypeCount = 8;
+constexpr int ObstacleTypeCount = 9;
 
-constexpr int HazardTypeCount = 7;
+constexpr int HazardTypeCount = 8; // Updated from 7 to 8
 
 ObstacleType ObstacleTypeFromIndex(int index);
 
@@ -48,7 +50,7 @@ const char* GetObstacleTypeName(ObstacleType type);
 
 const char* GetHazardTypeName(HazardType type);
 
-/// Base for a renderable obstacle asset instance, stationary or hazard.
+/// Base for a renderable obstacle asset instance, stationary or moving.
 ///
 /// This layer owns visual state only: mesh, material, transform and shadow.
 /// Future gameplay objects will reference one of these visuals and own

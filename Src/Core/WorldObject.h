@@ -36,6 +36,14 @@ public:
 
     const Transform3D& GetTransform() const;
 
+    /// The matrix this object is drawn with.
+    ///
+    /// For a plain object that is just its own transform. SceneNode overrides
+    /// it to return the transform composed with its parents', which is what
+    /// lets the renderer draw a flat list and a hierarchy through exactly the
+    /// same path.
+    virtual glm::mat4 GetWorldMatrix() const;
+
     void SetMesh(std::shared_ptr<Mesh> mesh);
 
     const std::shared_ptr<Mesh>& GetMesh() const;

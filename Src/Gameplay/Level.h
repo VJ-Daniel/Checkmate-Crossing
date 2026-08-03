@@ -8,6 +8,16 @@
 #include "Lane.h"
 #include "Mesh.h"
 
+/// Axis-aligned horizontal world bounds. X is map width, Z is progression,
+/// and Y is deliberately absent so movement boundaries remain jump-proof.
+struct LevelBoundsXZ
+{
+    float minX = 0.0f;
+    float maxX = 0.0f;
+    float minZ = 0.0f;
+    float maxZ = 0.0f;
+};
+
 /// Builds and owns the battlefield: the ordered strip of lanes that runs
 /// from the start area to the king's cage, following the layout in GDD
 /// section 4.
@@ -29,11 +39,12 @@ public:
 
     const std::vector<std::shared_ptr<Lane>>& GetLanes() const;
 
-    /// Scenery blocks standing outside the walkable board.
+    /// Scenery blocks forming the finished perimeter outside the walkable
+    /// board.
     ///
-    /// Purely visual: they give the orthographic view something with real
-    /// height to shade, which is what stops an empty map from looking like
-    /// a flat striped board. Nothing here is an obstacle.
+    /// Purely visual: continuous player containment comes from
+    /// ClampToPlayableBounds, while these varied blocks hide the world
+    /// outside that logical boundary from the orthographic camera.
     const std::vector<std::shared_ptr<WorldObject>>& GetDecorations() const;
 
     /// Where the pawn starts, on the surface of the last start-area row.
@@ -57,6 +68,25 @@ public:
     /// is made longer.
     int FindRowOfType(LaneType type) const;
 
+    /// Logical edges of the playable road, before an entity's own footprint
+    /// is inset. Derived from the lane list rather than a hard-coded row
+    /// count, so extending the level automatically extends its end boundary.
+    LevelBoundsXZ GetPlayableBounds() const;
+
+    /// Outer envelope occupied by the dense decorative perimeter. Camera
+    /// clamping uses this rather than the smaller player bounds because an
+    /// orthographic viewport displays several world units around its target.
+    LevelBoundsXZ GetBoundaryVisualBounds() const;
+
+    /// Resolves an object's centre inside the playable rectangle after
+    /// accounting for its horizontal footprint. This is the project's
+    /// continuous four-edge boundary constraint: it has no corner gaps and
+    /// ignores Y, so jumping cannot cross it.
+    glm::vec3 ClampToPlayableBounds(
+        const glm::vec3& position,
+        float halfWidth,
+        float halfDepth) const;
+
     /// How far from the centre the pawn may walk.
     static float GetPlayableHalfWidth();
 
@@ -70,7 +100,7 @@ private:
     /// Appends "count" consecutive lanes of one type and advances the row.
     void AddLanes(LaneType type, int count);
 
-    /// Scatters scenery blocks down both sides of the finished level.
+    /// Builds dense, deterministic block strips around all four map edges.
     void BuildDecorations();
 
     std::vector<std::shared_ptr<Lane>> lanes;

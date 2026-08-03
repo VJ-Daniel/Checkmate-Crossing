@@ -5,6 +5,7 @@
 
 #include <glm.hpp>
 
+#include "Collision.h"
 #include "GateMeshFactory.h"
 #include "GroundEntity.h"
 #include "WorldObject.h"
@@ -124,6 +125,23 @@ public:
     /// sorts them. The gate's own shadow comes from GroundEntity and is
     /// drawn with the other shadows, before any of these.
     const std::vector<std::shared_ptr<GatePiece>>& GetParts() const;
+
+    //---------------------------------------------------------
+    // Collision
+    //---------------------------------------------------------
+
+    /// Appends the gate's solid volumes, in world space.
+    ///
+    /// Four boxes, not one: the two flagged sides, and the two door leaves.
+    /// A single box round the whole structure would wall off the gateway
+    /// itself, which is the one part the player is meant to walk through.
+    ///
+    /// The sides run from the edge of the opening outward, so the gap
+    /// between them is exactly the opening. The leaves are derived from the
+    /// current door angle every call, which is what keeps the collision and
+    /// the swing in step without either having to tell the other anything -
+    /// open the gate and its boxes rotate out of the way with it.
+    void AppendCollisionBoxes(std::vector<CollisionBox>& out) const;
 
     const CheckpointGateLayout& GetLayout() const;
 

@@ -2,9 +2,9 @@
     ============================================================
     Checkmate Crossing - King's Cage
 
-    Assembles the visual-only cage from the shared frame and door
-    meshes. The door remains a separate object so later gameplay can
-    rotate it around its authored hinge without changing this asset.
+    Assembles the visual-only cage from the shared frame and door-leaf
+    meshes. Both leaves remain separate objects so gameplay can rotate
+    each around its authored outer hinge without changing this asset.
     ============================================================
 */
 
@@ -12,11 +12,11 @@
 
 namespace
 {
-    /// Position of the door's authored hinge relative to the cage origin.
-    glm::vec3 DoorLocalOffset()
+    /// Position of one authored hinge relative to the cage origin.
+    glm::vec3 DoorLocalOffset(float hingeX)
     {
         return glm::vec3(
-            CageMetrics::DoorHingeX,
+            hingeX,
             CageMetrics::DoorHingeY,
             CageMetrics::DoorHingeZ);
     }
@@ -49,42 +49,68 @@ void KingsCage::Build(CageMeshLibrary& meshes)
     Initialize();
     SetShadowVisible(false);
 
-    const CagePartModel& doorModel =
-        meshes.GetModel(CagePart::Door);
+    const auto buildDoor =
+        [this, &meshes](CagePart part, float hingeX)
+        {
+            const CagePartModel& doorModel = meshes.GetModel(part);
 
-    door = std::make_shared<WorldObject>();
-    door->SetMesh(doorModel.mesh);
-    door->SetColor(glm::vec4(1.0f));
+            auto door = std::make_shared<WorldObject>();
+            door->SetMesh(doorModel.mesh);
+            door->SetColor(glm::vec4(1.0f));
 
-    // Closed is exactly zero. A future rescue animation only needs to
-    // rotate this transform around Y; the mesh origin is already the hinge.
-    door->GetTransform().SetRotation(glm::vec3(0.0f));
-    door->GetTransform().SetPosition(
-        groundPosition + DoorLocalOffset());
-    door->Initialize();
+            // Closed is exactly zero. The mesh origin is already on the
+            // selected outer hinge, so animation only changes Y rotation.
+            door->GetTransform().SetRotation(glm::vec3(0.0f));
+            door->GetTransform().SetPosition(
+                groundPosition + DoorLocalOffset(hingeX));
+            door->Initialize();
+            return door;
+        };
+
+    leftDoor = buildDoor(
+        CagePart::LeftDoor,
+        CageMetrics::LeftDoorHingeX);
+
+    rightDoor = buildDoor(
+        CagePart::RightDoor,
+        CageMetrics::RightDoorHingeX);
 }
 
 void KingsCage::SetGroundPosition(const glm::vec3& groundPosition)
 {
     GroundEntity::SetGroundPosition(groundPosition);
 
-    if (door)
+    if (leftDoor)
     {
-        // SetPosition deliberately leaves rotation untouched, preserving any
-        // future open-door pose while the complete cage is moved.
-        door->GetTransform().SetPosition(
-            groundPosition + DoorLocalOffset());
+        leftDoor->GetTransform().SetPosition(
+            groundPosition + DoorLocalOffset(CageMetrics::LeftDoorHingeX));
+    }
+
+    if (rightDoor)
+    {
+        rightDoor->GetTransform().SetPosition(
+            groundPosition + DoorLocalOffset(CageMetrics::RightDoorHingeX));
     }
 }
 
-WorldObject* KingsCage::GetDoor()
+WorldObject* KingsCage::GetLeftDoor()
 {
-    return door.get();
+    return leftDoor.get();
 }
 
-const WorldObject* KingsCage::GetDoor() const
+const WorldObject* KingsCage::GetLeftDoor() const
 {
-    return door.get();
+    return leftDoor.get();
+}
+
+WorldObject* KingsCage::GetRightDoor()
+{
+    return rightDoor.get();
+}
+
+const WorldObject* KingsCage::GetRightDoor() const
+{
+    return rightDoor.get();
 }
 
 float KingsCage::GetFloorHeight()

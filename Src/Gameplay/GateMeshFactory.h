@@ -172,14 +172,14 @@ namespace GateMetrics
 
     constexpr float WallBodyWidth = 0.94f;
     constexpr float WallBodyDepth = 0.28f;
-    constexpr float WallBodyHeight = 0.64f;
+    constexpr float WallBodyHeight = 1.12f;
 
     constexpr float WallCapWidth = 1.02f;
     constexpr float WallCapDepth = 0.34f;
 
-    constexpr float WallHeight = 0.78f;
+    constexpr float WallHeight = 1.28f;
 
-    constexpr int WallCourses = 2;
+    constexpr int WallCourses = 3;
 
     /// Segments are placed slightly closer than their caps are wide, so
     /// neighbours overlap by a couple of centimetres and the run never

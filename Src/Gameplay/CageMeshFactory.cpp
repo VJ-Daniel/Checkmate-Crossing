@@ -2,13 +2,15 @@
     ============================================================
     Checkmate Crossing - Cage Mesh Factory
 
-    Builds the visual-only frame and hinge-local door for the King's
-    placeholder prison. Gameplay and future door animation live outside
+    Builds the visual-only frame and hinge-local door leaves for the King's
+    placeholder prison. Gameplay and door animation live outside
     this reusable mesh library.
     ============================================================
 */
 
 #include "CageMeshFactory.h"
+
+#include <algorithm>
 
 #include "MeshBuilder.h"
 #include "ObstacleMeshFactory.h"
@@ -17,6 +19,12 @@ using namespace CageMetrics;
 
 namespace
 {
+    enum class DoorLeaf
+    {
+        Left,
+        Right
+    };
+
     const glm::vec3 CageTimber = ObstaclePalette::DarkWood * 0.96f;
     const glm::vec3 CageTimberAccent = ObstaclePalette::Wood * 0.90f;
     const glm::vec3 CageIron = ObstaclePalette::Iron * 0.72f;
@@ -40,6 +48,47 @@ namespace
                 rightX - leftX,
                 topY - bottomY,
                 frontZ - backZ));
+    }
+
+    /// Clips a box from the original full-width door at the centre seam and
+    /// converts it to the selected leaf's hinge-local coordinates. With both
+    /// leaves closed, the two clipped meshes reproduce the old gate exactly.
+    void AddDoorLeafBox(
+        MeshBuilder& builder,
+        DoorLeaf leaf,
+        float fullLeftX,
+        float fullRightX,
+        float bottomY,
+        float topY,
+        float backZ,
+        float frontZ)
+    {
+        const float leafMinimum = (leaf == DoorLeaf::Left)
+            ? 0.0f
+            : DoorLeafWidth;
+
+        const float leafMaximum = (leaf == DoorLeaf::Left)
+            ? DoorLeafWidth
+            : DoorWidth;
+
+        const float clippedLeft = std::max(fullLeftX, leafMinimum);
+        const float clippedRight = std::min(fullRightX, leafMaximum);
+
+        if (clippedRight <= clippedLeft)
+            return;
+
+        const float hingeX = (leaf == DoorLeaf::Left)
+            ? 0.0f
+            : DoorWidth;
+
+        AddDoorBox(
+            builder,
+            clippedLeft - hingeX,
+            clippedRight - hingeX,
+            bottomY,
+            topY,
+            backZ,
+            frontZ);
     }
 }
 
@@ -164,34 +213,55 @@ namespace CageMeshFactory
             break;
         }
 
-        case CagePart::Door:
+        case CagePart::LeftDoor:
+        case CagePart::RightDoor:
         {
             constexpr float StileWidth = 0.10f;
             constexpr float RailHeight = 0.11f;
 
-            // Door space begins at the hinge. Keeping every coordinate
-            // non-negative in X and Z is the pivot contract: an instance can
-            // later rotate directly around local Y at (0, 0, 0).
+            const DoorLeaf leaf = (part == CagePart::LeftDoor)
+                ? DoorLeaf::Left
+                : DoorLeaf::Right;
+
+            const auto addDoorBox =
+                [&builder, leaf](
+                    float leftX,
+                    float rightX,
+                    float bottomY,
+                    float topY,
+                    float backZ,
+                    float frontZ)
+                {
+                    AddDoorLeafBox(
+                        builder,
+                        leaf,
+                        leftX,
+                        rightX,
+                        bottomY,
+                        topY,
+                        backZ,
+                        frontZ);
+                };
+
+            // Build from the original full-width coordinates, clipping every
+            // box at the centre seam inside addDoorBox. The resulting local
+            // origin is the correct outer hinge for each leaf.
             builder.SetColor(CageTimber);
-            AddDoorBox(
-                builder,
+            addDoorBox(
                 0.0f, StileWidth,
                 0.0f, DoorHeight,
                 0.0f, DoorThickness);
-            AddDoorBox(
-                builder,
+            addDoorBox(
                 DoorWidth - StileWidth, DoorWidth,
                 0.0f, DoorHeight,
                 0.0f, DoorThickness);
 
             builder.SetColor(CageTimberAccent);
-            AddDoorBox(
-                builder,
+            addDoorBox(
                 0.0f, DoorWidth,
                 0.0f, RailHeight,
                 0.0f, DoorThickness);
-            AddDoorBox(
-                builder,
+            addDoorBox(
                 0.0f, DoorWidth,
                 DoorHeight - RailHeight, DoorHeight,
                 0.0f, DoorThickness);
@@ -207,8 +277,7 @@ namespace CageMeshFactory
                     innerWidth * static_cast<float>(bar + 1) /
                         static_cast<float>(DoorBarCount + 1);
 
-                AddDoorBox(
-                    builder,
+                addDoorBox(
                     centerX - BarWidth * 0.5f,
                     centerX + BarWidth * 0.5f,
                     RailHeight,
@@ -220,8 +289,7 @@ namespace CageMeshFactory
             // mark the future hinge side; they are detail, not behavior.
             builder.SetColor(CageDarkIron);
             constexpr float StrapHeight = 0.075f;
-            AddDoorBox(
-                builder,
+            addDoorBox(
                 StileWidth, DoorWidth - StileWidth,
                 DoorHeight * 0.5f - StrapHeight * 0.5f,
                 DoorHeight * 0.5f + StrapHeight * 0.5f,
@@ -232,8 +300,7 @@ namespace CageMeshFactory
                 const float centerY =
                     (hinge == 0) ? DoorHeight * 0.27f : DoorHeight * 0.73f;
 
-                AddDoorBox(
-                    builder,
+                addDoorBox(
                     0.0f, 0.25f,
                     centerY - StrapHeight * 0.5f,
                     centerY + StrapHeight * 0.5f,
@@ -242,15 +309,14 @@ namespace CageMeshFactory
 
             // A single raised plate at the free edge reads as a medieval
             // latch without implying that interaction exists yet.
-            AddDoorBox(
-                builder,
+            addDoorBox(
                 DoorWidth - 0.18f, DoorWidth - 0.07f,
                 DoorHeight * 0.5f - 0.08f,
                 DoorHeight * 0.5f + 0.08f,
                 0.042f, DoorThickness);
 
             model.height = DoorHeight;
-            model.width = DoorWidth;
+            model.width = DoorLeafWidth;
             model.depth = DoorThickness;
             break;
         }

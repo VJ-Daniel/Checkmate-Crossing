@@ -23,6 +23,7 @@ ObstacleType ObstacleTypeFromIndex(int index)
     case 4:  return ObstacleType::Bush;
     case 5:  return ObstacleType::Spikes;
     case 6:  return ObstacleType::Cow;
+    case 7:  return ObstacleType::Mud;
     default: return ObstacleType::Palisade;
     }
 }
@@ -37,7 +38,8 @@ HazardType HazardTypeFromIndex(int index)
     case 3:  return HazardType::RollingRock;
     case 4:  return HazardType::RollingLog;
     case 5:  return HazardType::Fireball;
-    default: return HazardType::Lightning;
+    case 6:  return HazardType::Lightning;
+    default: return HazardType::Cow;
     }
 }
 
@@ -52,9 +54,9 @@ const char* GetObstacleTypeName(ObstacleType type)
     case ObstacleType::Bush:     return "Bush";
     case ObstacleType::Spikes:   return "Spikes";
     case ObstacleType::Cow:      return "Cow";
+    case ObstacleType::Mud:      return "Mud";
     case ObstacleType::Palisade: return "Palisade";
     }
-
     return "Unknown";
 }
 
@@ -69,8 +71,8 @@ const char* GetHazardTypeName(HazardType type)
     case HazardType::RollingLog:  return "Rolling Log";
     case HazardType::Fireball:    return "Fireball";
     case HazardType::Lightning:   return "Lightning";
+    case HazardType::Cow:         return "Cow";
     }
-
     return "Unknown";
 }
 

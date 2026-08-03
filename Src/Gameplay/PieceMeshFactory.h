@@ -9,31 +9,147 @@
 #include "Mesh.h"
 #include "MeshBuilder.h"
 
-/// Tonal materials the figures are built from.
+/// Compatibility palette retained from the older mesh implementation.
 ///
-/// These are deliberately hueless. Every value is a brightness multiplier
-/// applied on top of the piece's team colour, so a white piece stays white
-/// and a black piece stays black - which is what a chess set wants - while
-/// armour, cloth, leather and steel still separate from one another.
-///
-/// The reference image's blue and gold heraldry is intentionally ignored;
-/// only the tonal relationships are borrowed from it.
+/// These are complete RGB colours, not brightness-only team multipliers.
+/// PieceMaterialSets::Legacy below maps every named material back onto these
+/// values so older callers can still request that compact material set.
 namespace PiecePalette
 {
-    /// The dominant material, left at full team colour.
-    inline const glm::vec3 Armor = glm::vec3(1.00f);
+    /// The dominant warm armour colour.
+    inline const glm::vec3 Armor = glm::vec3(0.87f, 0.85f, 0.82f);
 
     // The dark end is kept well clear of black on purpose. The directional
     // light already pulls front faces down to about 0.63 of their colour, so
     // a material much below 0.4 loses all its internal shape and the robes
     // and capes turn into flat silhouettes.
-    inline const glm::vec3 Metal = glm::vec3(0.90f);
-    inline const glm::vec3 Skin = glm::vec3(0.74f);
-    inline const glm::vec3 Cloth = glm::vec3(0.62f);
-    inline const glm::vec3 Wood = glm::vec3(0.56f);
-    inline const glm::vec3 Mane = glm::vec3(0.54f);
-    inline const glm::vec3 Leather = glm::vec3(0.46f);
-    inline const glm::vec3 Hair = glm::vec3(0.36f);
+    inline const glm::vec3 Metal = glm::vec3(0.72f, 0.74f, 0.78f);
+    inline const glm::vec3 Skin = glm::vec3(0.83f, 0.68f, 0.56f);
+    inline const glm::vec3 Cloth = glm::vec3(0.22f, 0.30f, 0.43f);
+    inline const glm::vec3 Wood = glm::vec3(0.33f, 0.22f, 0.10f);
+    inline const glm::vec3 Mane = glm::vec3(0.28f, 0.19f, 0.11f);
+    inline const glm::vec3 Leather = glm::vec3(0.46f, 0.31f, 0.15f);
+    inline const glm::vec3 Hair = glm::vec3(0.18f, 0.12f, 0.08f);
+}
+
+/// Every material a piece can be painted with, named by what it is rather
+/// than by what colour it happens to be.
+///
+/// One of these is threaded through every part builder, so a builder never
+/// names a colour of its own and the same skeleton can be painted two
+/// different ways without duplicating a line of geometry. That is what lets
+/// the detailed and compatibility palettes share the same builders.
+///
+/// The fields are deliberately finer-grained than the geometry needs today:
+/// armorLight and armorShadow, leather and leatherDark, clothBlue and
+/// clothLight all exist so a part can be split for contrast later without
+/// another struct change. In the compatibility set the members of each such
+/// pair hold the same value to preserve its simpler shading.
+struct PieceMaterials
+{
+    // Flesh and hair.
+    glm::vec3 skin;
+    glm::vec3 hair;
+    glm::vec3 eyes;
+
+    // Plate, mail and trim.
+    glm::vec3 armorLight;
+    glm::vec3 armorShadow;
+    glm::vec3 metalDark;
+    glm::vec3 gold;
+
+    /// Polished steel: blades, spearheads, shield plate.
+    ///
+    /// Separate from armorLight so blades and shield plate can keep a steel
+    /// treatment independently of the armour colour.
+    glm::vec3 blade;
+
+    // Cloth worn under and around the plate.
+    glm::vec3 clothBlue;
+    glm::vec3 clothLight;
+
+    // Belts, straps, tack and footwear.
+    glm::vec3 leather;
+    glm::vec3 leatherDark;
+    glm::vec3 boots;
+
+    // Hafts and shafts.
+    glm::vec3 wood;
+
+    // The horse: its coat, the darker muzzle, and mane and tail.
+    glm::vec3 coat;
+    glm::vec3 coatShadow;
+    glm::vec3 mane;
+};
+
+/// The two palettes the pieces are painted from.
+///
+/// This is the single place any RGB value for a chess piece is written down.
+namespace PieceMaterialSets
+{
+    /// The reference sheet's palette: warm skin, off-white plate over navy
+    /// cloth, brown leather and muted gold.
+    ///
+    /// Nothing is pure white or pure black. The directional light already
+    /// drops a front face to about 0.63 of its colour and lifts a top face
+    /// to 0.91, so a material at 1.0 blows out on top and one near 0.0 goes
+    /// to mud - both of which cost the shape its internal detail.
+    inline const PieceMaterials Detailed =
+    {
+        glm::vec3(0.82f, 0.62f, 0.45f),   // skin
+        glm::vec3(0.26f, 0.18f, 0.12f),   // hair
+        glm::vec3(0.12f, 0.09f, 0.08f),   // eyes
+
+        glm::vec3(0.86f, 0.86f, 0.83f),   // armorLight
+        glm::vec3(0.55f, 0.56f, 0.58f),   // armorShadow
+        glm::vec3(0.28f, 0.29f, 0.32f),   // metalDark
+        glm::vec3(0.72f, 0.57f, 0.24f),   // gold
+        glm::vec3(0.80f, 0.82f, 0.85f),   // blade
+
+        glm::vec3(0.17f, 0.22f, 0.34f),   // clothBlue
+        glm::vec3(0.38f, 0.44f, 0.55f),   // clothLight
+
+        glm::vec3(0.45f, 0.31f, 0.19f),   // leather
+        glm::vec3(0.28f, 0.19f, 0.12f),   // leatherDark
+        glm::vec3(0.30f, 0.20f, 0.13f),   // boots
+
+        glm::vec3(0.42f, 0.30f, 0.18f),   // wood
+
+        glm::vec3(0.80f, 0.79f, 0.75f),   // coat
+        glm::vec3(0.62f, 0.60f, 0.57f),   // coatShadow
+        glm::vec3(0.28f, 0.24f, 0.20f)    // mane
+    };
+
+    /// The older compact RGB palette, one colour per named material group.
+    ///
+    /// Every pair that Detailed splits for contrast collapses back to a
+    /// single value here, preserving the older flat-shaded treatment without
+    /// maintaining a second set of mesh-generation functions.
+    inline const PieceMaterials Legacy =
+    {
+        PiecePalette::Skin,      // skin
+        PiecePalette::Hair,      // hair
+        PiecePalette::Hair,      // eyes
+
+        PiecePalette::Armor,     // armorLight
+        PiecePalette::Armor,     // armorShadow
+        PiecePalette::Metal,     // metalDark
+        PiecePalette::Metal,     // gold
+        PiecePalette::Metal,     // blade
+
+        PiecePalette::Cloth,     // clothBlue
+        PiecePalette::Cloth,     // clothLight
+
+        PiecePalette::Leather,   // leather
+        PiecePalette::Leather,   // leatherDark
+        PiecePalette::Leather,   // boots
+
+        PiecePalette::Wood,      // wood
+
+        PiecePalette::Armor,     // coat
+        PiecePalette::Armor,     // coatShadow
+        PiecePalette::Mane       // mane
+    };
 }
 
 /// A finished piece model plus the measurements the game needs from it.
@@ -97,6 +213,26 @@ namespace PieceMeshFactory
     {
         Facing facing = Facing::Camera;
 
+        /// What this figure is painted with.
+        ///
+        /// It rides on the spec rather than being passed to every builder
+        /// separately because the spec is already threaded through all of
+        /// them, and because "what this figure is made of" belongs with
+        /// "what shape this figure is".
+        ///
+        /// Defaulting to the compatibility set keeps helper callers safe;
+        /// every current detailed humanoid selects Detailed explicitly.
+        PieceMaterials materials = PieceMaterialSets::Legacy;
+
+        /// Whether to cut a face - eyes and a fringe of hair - into the
+        /// head, and to split the plate into lit and shadowed halves.
+        ///
+        /// Off by default so helper callers opt into the extra geometry. It
+        /// is the one place detailed figures add boxes rather than only
+        /// colour, and they add them for the reason the reference does: a
+        /// bare skin-coloured block reads as a thumb, not a head.
+        bool detailedFace = false;
+
         // Widths, measured across the figure.
         float shoulderWidth = 0.40f;
         float torsoWidth = 0.28f;
@@ -144,6 +280,7 @@ namespace PieceMeshFactory
     /// frustum, so the robe has genuinely sloped sides rather than steps.
     float AddRobe(
         MeshBuilder& builder,
+        const FigureSpec& spec,
         float bottomWidth,
         float topWidth,
         float topY);
@@ -279,7 +416,47 @@ namespace PieceMeshFactory
     /// rider. Returns the Y of the saddle's seat, which is where a mounted
     /// figure's legs straddle it.
     float AddHorse(
-        MeshBuilder& builder);
+        MeshBuilder& builder,
+        const PieceMaterials& materials);
+
+    /// The horse in the four pieces the rig splits it into. AddHorse is
+    /// these in order, so the static animal and the animated one cannot
+    /// diverge.
+    ///
+    /// ix picks front (+1) from rear (-1) and iz picks the side, which is
+    /// how the rig tells one leg from another.
+    void AddHorseLeg(
+        MeshBuilder& builder,
+        const PieceMaterials& materials,
+        int ix,
+        int iz);
+
+    void AddHorseBody(
+        MeshBuilder& builder,
+        const PieceMaterials& materials);
+
+    void AddHorseNeckHead(
+        MeshBuilder& builder,
+        const PieceMaterials& materials);
+
+    void AddHorseTail(
+        MeshBuilder& builder,
+        const PieceMaterials& materials);
+
+    //---------------------------------------------------------
+    // Horse joint landmarks
+    //---------------------------------------------------------
+
+    /// Where the neck meets the chest, and where the tail leaves the rump.
+    glm::vec3 GetHorseNeckPivot();
+
+    glm::vec3 GetHorseTailPivot();
+
+    /// The shoulder or hip one of the four legs swings about.
+    glm::vec3 GetHorseLegPivot(int ix, int iz);
+
+    /// The point the body itself rocks about.
+    glm::vec3 GetHorseBodyPivot();
 
     /// Highest point of the horse, so the knight can report its height
     /// without the caller having to know how the horse is put together.
@@ -288,6 +465,155 @@ namespace PieceMeshFactory
     //---------------------------------------------------------
     // Piece models
     //---------------------------------------------------------
+
+    //---------------------------------------------------------
+    // Animated rigs
+    //
+    // The same models again, but split into the parts that have to move
+    // independently instead of baked into one mesh. Both forms are built by
+    // the very same part builders - the split versions only set the mesh
+    // origin to the joint first - so a rig can never drift out of step with
+    // the static model it came from.
+    //---------------------------------------------------------
+
+    /// The parts an animated piece can be split into.
+    ///
+    /// One list covers both body plans. A humanoid uses Root, Body, the two
+    /// arms and the two legs, plus Robe if it wears one instead of legs. The
+    /// horse uses Root, Body, Head and Tail, and all four legs - its front
+    /// pair reusing the humanoid's LeftLeg and RightLeg rather than adding
+    /// two more names that would mean the same thing.
+    ///
+    /// A model simply leaves the joints it has no use for empty.
+    enum class PieceJoint
+    {
+        /// The whole figure. Carries the walk bob and the jump crouch, and
+        /// nothing else - it is the one joint with no mesh of its own.
+        Root,
+
+        /// Everything above the hips: torso, shoulders, head, headwear.
+        Body,
+
+        /// The horse's neck and head. Unused by the humanoids.
+        Head,
+
+        Tail,
+
+        /// A skirt in place of legs, for the robed figures.
+        Robe,
+
+        /// A figure carried by another model: the pawn sitting on the horse.
+        ///
+        /// It hangs off the horse's Body, so every bounce and rock the horse
+        /// makes carries the rider with it and the two can never drift
+        /// apart. Its own arms hang off this in turn.
+        Rider,
+
+        LeftArm,
+        RightArm,
+
+        LeftLeg,
+        RightLeg,
+
+        RearLeftLeg,
+        RearRightLeg,
+
+        Count
+    };
+
+    constexpr int PieceJointCount = static_cast<int>(PieceJoint::Count);
+
+    /// One part of an animated model.
+    struct PieceRigPartModel
+    {
+        std::shared_ptr<Mesh> mesh;
+
+        /// Where this part's joint sits in the model's own coordinates.
+        ///
+        /// The mesh is authored with this point at its origin, so the node
+        /// that carries it rotates about the joint and nothing else. The
+        /// pivot is kept here as well because a child's position relative to
+        /// its parent is the difference between the two pivots, and only the
+        /// rig can work that out.
+        glm::vec3 pivot = glm::vec3(0.0f);
+
+        /// The joint this part hangs off.
+        ///
+        /// Carried per model rather than derived from the joint's identity,
+        /// because the same joint does not always hang off the same thing: a
+        /// standing figure's arms follow its torso, while a rider's follow
+        /// the rider, which itself follows the horse. One static map cannot
+        /// express both, and guessing from the joint name is how a rider
+        /// ends up swinging from the horse's ribs.
+        PieceJoint parent = PieceJoint::Root;
+    };
+
+    /// A finished animated model: one mesh per joint, plus the same
+    /// measurements the baked model reports.
+    struct PieceRigModel
+    {
+        std::array<PieceRigPartModel, PieceJointCount> parts;
+
+        float height = 0.0f;
+        float baseWidth = 0.0f;
+        float baseDepth = 0.0f;
+
+        /// False for the pieces that have no rig and still draw as one mesh.
+        bool valid = false;
+    };
+
+    /// Whether this piece type has an animated rig.
+    bool HasRig(PieceType type);
+
+    /// Builds the split version of a model. Returns an invalid model for the
+    /// types that do not have one.
+    PieceRigModel CreateRig(PieceType type);
+
+    //---------------------------------------------------------
+    // Joint landmarks
+    //
+    // Where the animated joints sit on a figure. Derived from the same spec
+    // the geometry is, so a pivot cannot end up somewhere the body is not.
+    //---------------------------------------------------------
+
+    /// Height of the hip joint the legs swing about.
+    float GetHipPivotY(const FigureSpec& spec);
+
+    /// Height of the shoulder joint the arms swing about.
+    float GetShoulderPivotY(const FigureSpec& spec);
+
+    /// Height the hands end up at, which is where a held prop is gripped.
+    float GetHandY(const FigureSpec& spec);
+
+    /// Bottom and top of the eyes on a detailed face.
+    ///
+    /// Shared so headwear can be kept clear of the face by construction
+    /// rather than by a rim height that happens to work for one figure.
+    float GetEyeBottomY(const FigureSpec& spec);
+
+    float GetFaceTopY(const FigureSpec& spec);
+
+    /// One leg or one arm, for building a rig part. AddLegs and AddArms are
+    /// these in a loop, so the static and animated models stay identical.
+    void AddLeg(
+        MeshBuilder& builder,
+        const FigureSpec& spec,
+        int side);
+
+    void AddArm(
+        MeshBuilder& builder,
+        const FigureSpec& spec,
+        int side,
+        float forwardReach = 0.0f);
+
+    /// Whether a piece is painted from PieceMaterialSets::Detailed.
+    ///
+    /// The repainted pieces carry real colours in their vertices, so their
+    /// object colour has to be left white or the team tint would multiply
+    /// straight through the palette and undo it. ChessPiece asks this before
+    /// deciding what to tint itself, which keeps the two ends of that rule
+    /// from drifting apart.
+    bool UsesDetailedMaterials(PieceType type);
 
     /// Builds the model for one piece type.
     ///
@@ -312,6 +638,13 @@ public:
     /// Returns the model for a type, building it on first use.
     const PieceModel& GetModel(PieceType type);
 
+    /// The split, animatable version of a model, built on first use.
+    ///
+    /// Cached beside the baked one for the same reason: the meshes are
+    /// shared by every piece of that type, so a dozen animated pawns still
+    /// cost one set of vertex buffers between them.
+    const PieceMeshFactory::PieceRigModel& GetRigModel(PieceType type);
+
     /// Factory: a ready-to-render piece sharing this library's model.
     std::shared_ptr<ChessPiece> CreatePiece(
         PieceType type,
@@ -323,4 +656,8 @@ public:
 private:
 
     std::array<PieceModel, PieceTypeCount> models;
+
+    std::array<PieceMeshFactory::PieceRigModel, PieceTypeCount> rigModels;
+
+    std::array<bool, PieceTypeCount> rigModelBuilt{};
 };

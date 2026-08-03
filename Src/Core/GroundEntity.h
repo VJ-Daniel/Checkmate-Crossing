@@ -1,3 +1,4 @@
+// GroundEntity.h
 #pragma once
 
 #include <glm.hpp>
@@ -32,7 +33,7 @@ public:
     virtual void SetGroundPosition(const glm::vec3& groundPosition);
 
     const glm::vec3& GetGroundPosition() const;
-
+    
     /// Records the size of the model, so the shadow can match it. Depth
     /// defaults to width, which is right for anything roughly square.
     void SetDimensions(
@@ -41,9 +42,7 @@ public:
         float footprintDepth = 0.0f);
 
     float GetHeight() const;
-
     float GetFootprintWidth() const;
-
     float GetFootprintDepth() const;
 
     /// How much wider than the model its shadow is drawn.
@@ -60,14 +59,9 @@ protected:
     void UpdateShadow();
 
     glm::vec3 groundPosition;
-
     float height;
-
     float footprintWidth;
-
     float footprintDepth;
-
     float shadowScale;
-
     GroundShadow shadow;
 };

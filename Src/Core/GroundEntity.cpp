@@ -1,42 +1,26 @@
-/*
-    ============================================================
-    Checkmate Crossing - Ground Entity
-
-    Shared behaviour for everything that stands on the battlefield:
-    where it stands, how big it is, and the shadow underneath it.
-    ============================================================
-*/
-
+// GroundEntity.cpp
 #include "GroundEntity.h"
 
-#include "GameConfig.h"
-
 GroundEntity::GroundEntity()
-    : groundPosition(0.0f),
-    height(1.0f),
-    footprintWidth(0.5f),
-    footprintDepth(0.5f),
-    shadowScale(GameConfig::PieceShadowScale)
+    : groundPosition(0.0f)
+    , height(0.0f)
+    , footprintWidth(0.0f)
+    , footprintDepth(0.0f)
+    , shadowScale(1.0f)
 {
 }
 
 void GroundEntity::Initialize()
 {
-    shadow.SetFootprint(
-        footprintWidth * shadowScale,
-        footprintDepth * shadowScale);
-
+    // Initialize the shadow
     shadow.Initialize();
-
-    UpdateShadow();
 }
 
 void GroundEntity::SetGroundPosition(const glm::vec3& groundPosition)
 {
     this->groundPosition = groundPosition;
 
-    // The model's pivot is already at its base, so the ground point is the
-    // position with no correction.
+    // KEEP THIS LINE: This makes the visual model appear!
     transform.SetPosition(groundPosition);
 
     UpdateShadow();
@@ -47,19 +31,11 @@ const glm::vec3& GroundEntity::GetGroundPosition() const
     return groundPosition;
 }
 
-void GroundEntity::SetDimensions(
-    float height,
-    float footprintWidth,
-    float footprintDepth)
+void GroundEntity::SetDimensions(float height, float footprintWidth, float footprintDepth)
 {
     this->height = height;
     this->footprintWidth = footprintWidth;
-    this->footprintDepth =
-        (footprintDepth > 0.0f) ? footprintDepth : footprintWidth;
-
-    shadow.SetFootprint(
-        this->footprintWidth * shadowScale,
-        this->footprintDepth * shadowScale);
+    this->footprintDepth = (footprintDepth > 0.0f) ? footprintDepth : footprintWidth;
 }
 
 float GroundEntity::GetHeight() const
@@ -80,10 +56,6 @@ float GroundEntity::GetFootprintDepth() const
 void GroundEntity::SetShadowScale(float scale)
 {
     shadowScale = scale;
-
-    shadow.SetFootprint(
-        footprintWidth * shadowScale,
-        footprintDepth * shadowScale);
 }
 
 void GroundEntity::SetShadowVisible(bool visible)

@@ -16,6 +16,7 @@
 #include "CheckpointGate.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
@@ -285,6 +286,125 @@ GatePiece* CheckpointGate::GetRightDoor()
 const std::vector<std::shared_ptr<GatePiece>>& CheckpointGate::GetParts() const
 {
     return parts;
+}
+
+void CheckpointGate::AppendCollisionBoxes(std::vector<CollisionBox>& out) const
+{
+    using namespace GateMetrics;
+
+    const glm::vec3 base = groundPosition;
+
+    const int segments = std::max(layout.wallSegmentsPerSide, 0);
+
+    //---------------------------------------------------------
+    // The two flagged sides.
+    //
+    // Each runs from the edge of the opening out to the end of its wall
+    // run, so the two boxes stop exactly where the gateway begins and the
+    // player can always walk between them. The pillar is the deepest and
+    // tallest thing on that side, so it sets the depth and height - erring
+    // a few centimetres proud of the thinner wall segments rather than
+    // letting the player clip a pillar corner.
+    //---------------------------------------------------------
+
+    const float innerX = DoorWidth;
+    const float outerX = CoreHalfWidth + WallSpacing * static_cast<float>(segments);
+
+    const float sideHalfWidth = (outerX - innerX) * 0.5f;
+    const float sideCenterX = (outerX + innerX) * 0.5f;
+
+    const float sideHalfHeight = PillarHeight * 0.5f;
+
+    for (int side = -1; side <= 1; side += 2)
+    {
+        CollisionBox box;
+
+        box.center = base + glm::vec3(
+            static_cast<float>(side) * sideCenterX,
+            sideHalfHeight,
+            0.0f);
+
+        box.halfExtents = glm::vec3(
+            sideHalfWidth,
+            sideHalfHeight,
+            PillarDepth * 0.5f);
+
+        out.push_back(box);
+    }
+
+    //---------------------------------------------------------
+    // The two leaves.
+    //
+    // A swinging door is not axis aligned, so each leaf's box is rebuilt
+    // from its four rotated corners. That is exact at the two poses that
+    // matter - shut, where the pair seals the opening, and fully open,
+    // where both lie back along their pillars and leave the middle clear -
+    // and conservatively covers the sweep in between, which is correct:
+    // a leaf mid-swing really is in the way.
+    //---------------------------------------------------------
+
+    const float angle = glm::radians(doorAngle);
+
+    for (int side = -1; side <= 1; side += 2)
+    {
+        // Left leaf reaches right from its hinge and turns the positive
+        // way; the right leaf mirrors both. Matches SetDoorAngle exactly.
+        const float reach = (side < 0) ? DoorWidth : -DoorWidth;
+        const float turn = (side < 0) ? angle : -angle;
+
+        const glm::vec3 hinge = base + glm::vec3(
+            static_cast<float>(side) * DoorWidth,
+            0.0f,
+            -DoorThickness * 0.5f);
+
+        const float cosTurn = std::cos(turn);
+        const float sinTurn = std::sin(turn);
+
+        float minX = 0.0f;
+        float maxX = 0.0f;
+        float minZ = 0.0f;
+        float maxZ = 0.0f;
+
+        bool first = true;
+
+        for (int corner = 0; corner < 4; ++corner)
+        {
+            const float localX = (corner & 1) ? reach : 0.0f;
+            const float localZ = (corner & 2) ? DoorThickness : 0.0f;
+
+            // The same Y rotation Transform3D applies, so the box cannot
+            // disagree with where the leaf is actually drawn.
+            const float x = localX * cosTurn + localZ * sinTurn;
+            const float z = -localX * sinTurn + localZ * cosTurn;
+
+            if (first)
+            {
+                minX = maxX = x;
+                minZ = maxZ = z;
+                first = false;
+                continue;
+            }
+
+            minX = std::min(minX, x);
+            maxX = std::max(maxX, x);
+            minZ = std::min(minZ, z);
+            maxZ = std::max(maxZ, z);
+        }
+
+        CollisionBox box;
+
+        box.center = glm::vec3(
+            hinge.x + (minX + maxX) * 0.5f,
+            base.y + DoorHeight * 0.5f,
+            hinge.z + (minZ + maxZ) * 0.5f);
+
+        box.halfExtents = glm::vec3(
+            (maxX - minX) * 0.5f,
+            DoorHeight * 0.5f,
+            (maxZ - minZ) * 0.5f);
+
+        out.push_back(box);
+    }
 }
 
 const CheckpointGateLayout& CheckpointGate::GetLayout() const

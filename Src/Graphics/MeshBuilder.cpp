@@ -91,8 +91,19 @@ namespace
 }
 
 MeshBuilder::MeshBuilder()
-    : currentColor(1.0f)
+    : currentColor(1.0f),
+    currentOrigin(0.0f)
 {
+}
+
+void MeshBuilder::SetOrigin(const glm::vec3& origin)
+{
+    currentOrigin = origin;
+}
+
+const glm::vec3& MeshBuilder::GetOrigin() const
+{
+    return currentOrigin;
 }
 
 void MeshBuilder::SetColor(const glm::vec3& color)
@@ -116,7 +127,7 @@ void MeshBuilder::AddBox(
     {
         MeshVertex vertex;
 
-        vertex.position = center + corner.position * size;
+        vertex.position = center - currentOrigin + corner.position * size;
 
         // The boxes are only ever scaled on their axes, never rotated, so
         // the cube's own face normals stay correct as they are.
@@ -253,7 +264,7 @@ void MeshBuilder::AddFrustumAt(
             MeshVertex vertex;
 
             vertex.position = faceCorners[face][corner] +
-                glm::vec3(offsetX, 0.0f, offsetZ);
+                glm::vec3(offsetX, 0.0f, offsetZ) - currentOrigin;
 
             vertex.normal = faceNormals[face];
             vertex.texCoord = cornerUVs[corner];
@@ -339,7 +350,7 @@ void MeshBuilder::AddFlatTriangle(
     {
         MeshVertex vertex;
 
-        vertex.position = corners[i];
+        vertex.position = corners[i] - currentOrigin;
         vertex.normal = normal;
         vertex.texCoord = uvs[i];
         vertex.color = currentColor;
