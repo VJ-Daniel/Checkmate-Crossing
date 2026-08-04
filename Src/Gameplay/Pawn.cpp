@@ -36,6 +36,16 @@ namespace
 
         return empty;
     }
+
+    PieceType VisualCharacterForAbility(PieceType abilityType)
+    {
+        // The Knight pickup represents the horse ability, but the playable
+        // visual is the pawn riding that horse.
+        if (abilityType == PieceType::Knight)
+            return PieceType::MountedPawn;
+
+        return abilityType;
+    }
 }
 
 namespace
@@ -325,15 +335,32 @@ void Pawn::SetCharacter(
     PieceType newCharacter,
     PieceMeshLibrary& meshLibrary)
 {
+    if (!SetVisualCharacter(newCharacter, meshLibrary))
+        return;
+
+    // Nothing of the previous character survives - no lingering shield, no
+    // stale immunity, no unused pickup.
+    ClearAbilityState();
+
+    PieceType ability = PieceType::Bishop;
+
+    if (GetCharacterAbility(newCharacter, ability))
+        CollectPiece(ability);
+}
+
+bool Pawn::SetVisualCharacter(
+    PieceType newCharacter,
+    PieceMeshLibrary& meshLibrary)
+{
     // The riderless horse is a collectible, not a body the player wears.
     if (newCharacter == PieceType::Knight)
-        return;
+        return false;
 
     const PieceMeshFactory::PieceRigModel& rigModel =
         meshLibrary.GetRigModel(newCharacter);
 
     if (!rigModel.valid)
-        return;
+        return false;
 
     character = newCharacter;
 
@@ -366,17 +393,28 @@ void Pawn::SetCharacter(
     // switching character cannot move the player.
     SetMesh(nullptr);
 
-    // Nothing of the previous character survives - no lingering shield, no
-    // stale immunity, no half-finished stride.
-    ClearAbilityState();
-
-    PieceType ability = PieceType::Bishop;
-
-    if (GetCharacterAbility(newCharacter, ability))
-        CollectPiece(ability);
-
     UpdateShadow();
     UpdateAnimation(0.0f);
+
+    return true;
+}
+
+void Pawn::ApplyAbilityVisual(PieceType abilityType)
+{
+    if (!meshLibrary)
+        return;
+
+    SetVisualCharacter(
+        VisualCharacterForAbility(abilityType),
+        *meshLibrary);
+}
+
+void Pawn::RestorePawnVisual()
+{
+    if (!meshLibrary)
+        return;
+
+    SetVisualCharacter(PieceType::Pawn, *meshLibrary);
 }
 
 PieceType Pawn::GetCharacter() const
@@ -497,27 +535,9 @@ void Pawn::CollectPiece(PieceType type)
     hasStoredPiece = true;
     storedPieceType = type;
 
-    // =========================================================
-    // THE FIX: SWAP THE MESH TO THE COLLECTED PIECE!
-    // =========================================================
-    if (meshLibrary)
-    {
-        // Create a temporary chess piece model
-        auto newMesh = meshLibrary->CreatePiece(type, PieceTeam::White);
-
-        // Steal its mesh and apply it to our pawn
-        SetMesh(newMesh->GetMesh());
-
-        // Set the team color of the piece
-        SetColor(newMesh->GetColor());
-
-        // Resize it to fit the pawn's scale
-        float pieceScale = GameConfig::PieceScale;
-        transform.SetScale(pieceScale, pieceScale, pieceScale);
-    }
-    // =========================================================
-
-    std::cout << "Pawn transformed into a " << GetPieceTypeName(type) << "!" << std::endl;
+    std::cout
+        << "Stored " << GetPieceTypeName(type)
+        << " ability. Press E to activate." << std::endl;
 }
 
 bool Pawn::HasStoredPiece() const
@@ -537,6 +557,8 @@ void Pawn::TryActivateAbility()
 
     activeAbilityType = storedPieceType;
     hasStoredPiece = false;
+
+    ApplyAbilityVisual(activeAbilityType);
 
     switch (activeAbilityType)
     {
@@ -572,6 +594,7 @@ void Pawn::TryActivateAbility()
         // whoever owns HazardManager (currently Game) to react to.
         abilityActive = false;
         bishopPulsePending = true;
+        RestorePawnVisual();
         break;
 
     default:
@@ -593,6 +616,7 @@ void Pawn::UpdateAbility(float deltaTime)
     {
         abilityActive = false;
         shieldAvailable = false;
+        RestorePawnVisual();
     }
 }
 
@@ -641,6 +665,7 @@ void Pawn::ConsumeShield()
     {
         abilityActive = false;
         abilityTimeRemaining = 0.0f;
+        RestorePawnVisual();
     }
 }
 
@@ -725,17 +750,8 @@ void Pawn::Respawn()
     knockbackTimer = 0.0f;
     // ------------------------------
 
-    // =========================================
-    // REVERT MESH, SIZE, AND COLOR BACK TO NORMAL
-    // =========================================
-    SetMesh(Mesh::CreateCube()); // <-- Change back to a cube
-    SetColor(GameConfig::PawnColor); // Revert to original white color
-    transform.SetScale(
-        GameConfig::PawnWidth,
-        GameConfig::PawnHeight,
-        GameConfig::PawnWidth
-    );
-    // =========================================
+    ClearAbilityState();
+    RestorePawnVisual();
 
     UpdateShadow();
 }
