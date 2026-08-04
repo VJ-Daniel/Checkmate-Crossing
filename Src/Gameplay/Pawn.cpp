@@ -326,6 +326,7 @@ void Pawn::ClearAbilityState()
 {
     abilityActive = false;
     abilityTimeRemaining = 0.0f;
+    abilityVisualTimeRemaining = 0.0f;
     shieldAvailable = false;
     hasStoredPiece = false;
     bishopPulsePending = false;
@@ -414,6 +415,7 @@ void Pawn::RestorePawnVisual()
     if (!meshLibrary)
         return;
 
+    abilityVisualTimeRemaining = 0.0f;
     SetVisualCharacter(PieceType::Pawn, *meshLibrary);
 }
 
@@ -590,11 +592,12 @@ void Pawn::TryActivateAbility()
 
     case PieceType::Bishop:
 
-        // Instant effect: no ongoing timer, just a one-shot pulse for
-        // whoever owns HazardManager (currently Game) to react to.
+        // Instant gameplay effect: a one-shot pulse for whoever owns
+        // HazardManager (currently Game) to react to. The visual lingers
+        // briefly so the ability still reads on screen.
         abilityActive = false;
         bishopPulsePending = true;
-        RestorePawnVisual();
+        abilityVisualTimeRemaining = GameConfig::BishopVisualLingerDuration;
         break;
 
     default:
@@ -607,16 +610,23 @@ void Pawn::TryActivateAbility()
 
 void Pawn::UpdateAbility(float deltaTime)
 {
-    if (!abilityActive)
-        return;
-
-    abilityTimeRemaining -= deltaTime;
-
-    if (abilityTimeRemaining <= 0.0f)
+    if (abilityActive)
     {
-        abilityActive = false;
-        shieldAvailable = false;
-        RestorePawnVisual();
+        abilityTimeRemaining -= deltaTime;
+
+        if (abilityTimeRemaining <= 0.0f)
+        {
+            abilityActive = false;
+            shieldAvailable = false;
+            RestorePawnVisual();
+        }
+    }
+    else if (abilityVisualTimeRemaining > 0.0f)
+    {
+        abilityVisualTimeRemaining -= deltaTime;
+
+        if (abilityVisualTimeRemaining <= 0.0f)
+            RestorePawnVisual();
     }
 }
 

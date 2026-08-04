@@ -244,6 +244,10 @@ namespace GameConfig
     /// Bishop: how many nearby hazards its ability removes.
     constexpr int BishopRemovalCount = 2;
 
+    /// Bishop clears hazards immediately, but its model lingers briefly so
+    /// the player can see which ability just fired.
+    constexpr float BishopVisualLingerDuration = 1.0f;
+
     /// How long a fireball's residual fire patch lingers after impact,
     /// per the GDD's "leave fire behind that deals continuous damage."
     constexpr float FireballBurnDuration = 3.0f;

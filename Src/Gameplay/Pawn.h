@@ -385,6 +385,8 @@ private:
 
     float abilityTimeRemaining = 0.0f;
 
+    float abilityVisualTimeRemaining = 0.0f;
+
     bool shieldAvailable = false;
 
     bool bishopPulsePending = false;
