@@ -419,14 +419,56 @@ void Game::BuildLevelObstacles()
     const float halfWidth = Level::GetPlayableHalfWidth();
 
     auto place = [this](ObstacleType type, float x, const Lane& lane)
+        {
+            auto obstacle = obstacleMeshes->CreateObstacle(type);
+
+            obstacle->SetGroundPosition(
+                glm::vec3(x, lane.GetSurfaceHeight(), lane.GetCenterZ()));
+
+            stationaryHazards.push_back(obstacle);
+        };
+
+    // ---------------------------------------------------------
+    // TESTING ARENA: Extra breakable obstacles for Bishop/Queen testing
+    // ---------------------------------------------------------
     {
-        auto obstacle = obstacleMeshes->CreateObstacle(type);
+        // Place them 2-5 lanes ahead of the pawn, clustered together
+        int rowOffset = 2;
+        if (const Lane* lane = level->GetLane(level->GetSpawnRow() + rowOffset))
+        {
+            const float y = lane->GetSurfaceHeight();
+            const float z = lane->GetCenterZ();
 
-        obstacle->SetGroundPosition(
-            glm::vec3(x, lane.GetSurfaceHeight(), lane.GetCenterZ()));
+            // Helper to manually spawn one breakable
+            auto AddBreakable = [&](ObstacleType type, float xOffset, int rowOff) {
+                int row = level->GetSpawnRow() + rowOff;
+                if (const Lane* rowLane = level->GetLane(row))
+                {
+                    const float rowY = rowLane->GetSurfaceHeight();
+                    const float rowZ = rowLane->GetCenterZ();
+                    auto obstacle = obstacleMeshes->CreateObstacle(type);
+                    obstacle->SetGroundPosition(glm::vec3(xOffset, rowY, rowZ));
+                    obstacle->Initialize();
+                    stationaryHazards.push_back(obstacle);
+                }
+                };
 
-        stationaryHazards.push_back(obstacle);
-    };
+            // A single Fence to test 1 removal
+            AddBreakable(ObstacleType::Fence, 0.0f, 2);
+
+            // Two side-by-side Palisades to test 2 removals
+            AddBreakable(ObstacleType::Palisade, -1.0f, 3);
+            AddBreakable(ObstacleType::Palisade, 1.0f, 3);
+
+            // Three Fences in a row to test removal limits
+            AddBreakable(ObstacleType::Fence, -1.5f, 4);
+            AddBreakable(ObstacleType::Fence, 0.0f, 4);
+            AddBreakable(ObstacleType::Fence, 1.5f, 4);
+
+            // One Palisade far away to test range limits
+            AddBreakable(ObstacleType::Palisade, 0.0f, 8);
+        }
+    }
 
     // SpikeMud section (3 rows): Spikes and Mud alternate left/right down
     // the section, per the GDD's own "[S] [M]     [S]     [M] [S]" map, so
@@ -437,19 +479,19 @@ void Game::BuildLevelObstacles()
         if (rows.size() >= 1 && rows[0])
         {
             place(ObstacleType::Spikes, -halfWidth * 0.55f, *rows[0]);
-            place(ObstacleType::Mud,     halfWidth * 0.24f, *rows[0]);
+            place(ObstacleType::Mud, halfWidth * 0.24f, *rows[0]);
         }
 
         if (rows.size() >= 2 && rows[1])
         {
-            place(ObstacleType::Mud,    -halfWidth * 0.24f, *rows[1]);
-            place(ObstacleType::Spikes,  halfWidth * 0.55f, *rows[1]);
+            place(ObstacleType::Mud, -halfWidth * 0.24f, *rows[1]);
+            place(ObstacleType::Spikes, halfWidth * 0.55f, *rows[1]);
         }
 
         if (rows.size() >= 3 && rows[2])
         {
             place(ObstacleType::Spikes, -halfWidth * 0.70f, *rows[2]);
-            place(ObstacleType::Mud,    -halfWidth * 0.35f, *rows[2]);
+            place(ObstacleType::Mud, -halfWidth * 0.35f, *rows[2]);
             // Right half of this row stays clear.
         }
     }
@@ -463,8 +505,8 @@ void Game::BuildLevelObstacles()
 
         if (rows.size() >= 1 && rows[0])
         {
-            place(ObstacleType::Tree,  -halfWidth * 0.55f, *rows[0]);
-            place(ObstacleType::Fence,  halfWidth * 0.45f, *rows[0]);
+            place(ObstacleType::Tree, -halfWidth * 0.55f, *rows[0]);
+            place(ObstacleType::Fence, halfWidth * 0.45f, *rows[0]);
         }
 
         if (rows.size() >= 2 && rows[1])
@@ -474,13 +516,13 @@ void Game::BuildLevelObstacles()
             // Wall fully blocks and can neither be jumped nor broken (GDD),
             // so it sits near the edge and leaves the wide side as the
             // real route.
-            place(ObstacleType::Wall,  halfWidth * 0.73f, *rows[1]);
+            place(ObstacleType::Wall, halfWidth * 0.73f, *rows[1]);
         }
 
         if (rows.size() >= 3 && rows[2])
         {
             place(ObstacleType::Palisade, -halfWidth * 0.44f, *rows[2]);
-            place(ObstacleType::Bush,      halfWidth * 0.22f, *rows[2]);
+            place(ObstacleType::Bush, halfWidth * 0.22f, *rows[2]);
             // Right side of this row (roughly x = 1.5..4.5) stays clear --
             // BuildLevelCollectibles puts the Queen there.
         }
@@ -567,23 +609,22 @@ void Game::BuildLevelHazards()
         }
     }
 
-    // FenceTree section: the Cow starts chasing from the first row's
-    // centre gap, matching the GDD's "moving environmental hazard that
-    // follows the player," escalating alongside the stationary props
-    // BuildLevelObstacles places here.
-    {
-        auto rows = FindConsecutiveRowsOfType(*level, LaneType::FenceTree);
+    // =========================================================
+    // COW: Moving environmental hazard that follows the player
+    // =========================================================
+    //{
+    //    auto rows = FindConsecutiveRowsOfType(*level, LaneType::FenceTree);
 
-        if (!rows.empty() && rows.front())
-        {
-            hazardManager->SpawnCow(
-                glm::vec3(
-                    0.0f,
-                    rows.front()->GetSurfaceHeight(),
-                    rows.front()->GetCenterZ()),
-                2.5f);
-        }
-    }
+    //    if (!rows.empty() && rows.front())
+    //    {
+    //        hazardManager->SpawnCow(
+    //            glm::vec3(
+    //                0.0f,
+    //                rows.front()->GetSurfaceHeight(),
+    //                rows.front()->GetCenterZ()),
+    //            2.5f);
+    //    }
+    //}
 
     // FireballLightning section (3 rows): a repeating curved Fireball
     // sweep (burn patches are already automatic in HazardManager::Update),
@@ -894,7 +935,7 @@ void Game::UpdateDoors(float deltaTime)
     {
         const float newAngle = std::min(
             checkpointGate->GetDoorAngle() +
-                GameConfig::DoorOpenSpeed * deltaTime,
+            GameConfig::DoorOpenSpeed * deltaTime,
             CheckpointGate::GetMaxDoorAngle());
 
         checkpointGate->SetDoorAngle(newAngle);
@@ -963,6 +1004,13 @@ void Game::Update(float deltaTime)
             stationaryHazards,
             deltaTime);
 
+        if (kingsCage)
+        {
+            std::vector<CollisionBox> cageBoxes;
+            cageBoxes.push_back(kingsCage->GetCollisionBox());
+            hazardCollision->BlockAgainstBoxes(cageBoxes);
+        }
+
         // The checkpoint gate is a structure, not a hazard: its walls and
         // leaves only need to be solid. Rebuilt from the gate every frame so
         // the leaves' boxes follow the swing, which is what keeps the
@@ -990,11 +1038,47 @@ void Game::Update(float deltaTime)
     }
 
     // Bishop's ability mutates the world (removing nearby hazards)
-    if (pawn && pawn->ConsumeBishopActivationPulse() && hazardManager)
+    if (pawn && pawn->ConsumeBishopActivationPulse())
     {
-        hazardManager->RemoveNearest(
-            pawn->GetTransform().GetPosition(),
-            GameConfig::BishopRemovalCount);
+        const glm::vec3 pawnPos = pawn->GetTransform().GetPosition();
+        const float radius = 3.0f; // Search radius
+
+        std::cout << "=== BISHOP/QUEEN PULSE ===" << std::endl;
+
+        auto it = stationaryHazards.begin();
+        int removedCount = 0;
+
+        while (it != stationaryHazards.end())
+        {
+            // --- THE REAL FIX: Use 'break' to stop the loop entirely ---
+            if (removedCount >= GameConfig::BishopRemovalCount)
+            {
+                break; // Stop the loop completely. We found what we needed.
+            }
+            // ----------------------------------------------------------
+
+            ObstacleType type = (*it)->GetType();
+
+            // Only remove Fences and Palisades
+            if (type == ObstacleType::Fence || type == ObstacleType::Palisade)
+            {
+                float distance = glm::length((*it)->GetGroundPosition() - pawnPos);
+
+                if (distance < radius)
+                {
+                    std::cout << "  Removed a " << GetObstacleTypeName(type) << "! (Count: " << removedCount + 1 << ")" << std::endl;
+                    it = stationaryHazards.erase(it);
+                    removedCount++;
+                    continue; // 'erase' already moved the iterator, so skip ++it
+                }
+            }
+            ++it; // Advance the iterator normally if we didn't erase anything
+        }
+
+        if (removedCount == 0)
+        {
+            std::cout << "  No breakable obstacles (Fences/Palisades) within range." << std::endl;
+        }
     }
 
     // E's target isn't decided inside Pawn (see ConsumeInteractPulse) --

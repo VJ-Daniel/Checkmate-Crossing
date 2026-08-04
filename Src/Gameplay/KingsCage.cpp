@@ -93,6 +93,23 @@ void KingsCage::SetGroundPosition(const glm::vec3& groundPosition)
     }
 }
 
+CollisionBox KingsCage::GetCollisionBox() const
+{
+    CollisionBox box;
+    // Center the box exactly where the cage visual sits
+    box.center = groundPosition + glm::vec3(0.0f, CageMetrics::Height * 0.5f, 0.0f);
+
+    // Use the exact Width and Depth of the cage, minus a tiny sliver so the player can 
+    // walk completely inside the cage when the door is open.
+    const float padding = 0.15f;
+    box.halfExtents = glm::vec3(
+        (CageMetrics::Width * 0.5f) - padding,
+        CageMetrics::Height * 0.5f,
+        (CageMetrics::Depth * 0.5f) - padding
+    );
+    return box;
+}
+
 WorldObject* KingsCage::GetLeftDoor()
 {
     return leftDoor.get();

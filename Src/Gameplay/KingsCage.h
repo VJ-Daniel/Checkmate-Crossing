@@ -7,6 +7,8 @@
 #include "CageMeshFactory.h"
 #include "GroundEntity.h"
 #include "WorldObject.h"
+#include "Collision.h"
+
 
 /// Visual-only placeholder for the cage holding the king at a level's goal.
 ///
@@ -45,6 +47,8 @@ public:
 
     /// Height of the solid base on which the captive king should stand.
     static float GetFloorHeight();
+
+    CollisionBox GetCollisionBox() const;
 
 private:
 

@@ -434,17 +434,35 @@ bool HazardCollision::ApplyDamage(
     float knockback,
     bool isCow)
 {
+    // --- CRITICAL FIX: If it's the Cow, do NOT set the cooldown! ---
+    // This prevents the Cow from making you immune to other hazards.
+    if (isCow)
+    {
+        // Only apply the knockback, and exit immediately!
+        if (knockback > 0.0f && onKnockback)
+        {
+            glm::vec3 knockbackDir = direction;
+            if (glm::length(knockbackDir) < 0.01f)
+                knockbackDir = glm::vec3(0.0f, 0.0f, 1.0f);
+            knockbackDir = glm::normalize(knockbackDir);
+
+            glm::vec3 bounceDir = glm::normalize(glm::vec3(knockbackDir.x, 0.8f, knockbackDir.z));
+            onKnockback(bounceDir * knockback, true);
+        }
+        return true; // Exit now, do NOT set damageCooldownRemaining!
+    }
+    // -------------------------------------------------------------
+
+    // Normal damage logic (Spikes, Arrows, etc.)
     if (damageCooldownRemaining > 0.0f)
         return false;
 
     if (damage <= 0.0f && knockback <= 0.0f)
         return false;
 
-    // Apply damage
     if (damage > 0.0f && onDamageTaken)
         onDamageTaken(damage, direction);
 
-    // Apply knockback
     if (knockback > 0.0f && onKnockback)
     {
         glm::vec3 knockbackDir = direction;
@@ -452,11 +470,8 @@ bool HazardCollision::ApplyDamage(
             knockbackDir = glm::vec3(0.0f, 0.0f, 1.0f);
         knockbackDir = glm::normalize(knockbackDir);
 
-        // --- THE FIX: Add an upward bounce so the pawn leaves the ground! ---
         glm::vec3 bounceDir = glm::normalize(glm::vec3(knockbackDir.x, 0.8f, knockbackDir.z));
-        // --------------------------------------------------------------------
-
-        onKnockback(bounceDir * knockback, isCow);
+        onKnockback(bounceDir * knockback, false);
     }
 
     damageCooldownRemaining = damageCooldown;
