@@ -298,62 +298,70 @@ void Game::BuildCheckpointGate()
     if (!level || !gateMeshes)
         return;
 
-    const int row = level->FindRowOfType(LaneType::Checkpoint);
+    checkpointGates.clear();
+    checkpointGateOpening.clear();
 
-    const Lane* lane = level->GetLane(row);
+    for (int row : level->FindRowsOfType(LaneType::Checkpoint))
+    {
+        const Lane* lane = level->GetLane(row);
 
-    if (!lane)
-        return;
+        if (!lane)
+            continue;
 
-    checkpointGate = std::make_shared<CheckpointGate>();
+        auto gate = std::make_shared<CheckpointGate>();
 
-    checkpointGate->Build(*gateMeshes);
+        gate->Build(*gateMeshes);
 
-    // Centred on the board and standing on the checkpoint lane's own surface.
-    checkpointGate->SetGroundPosition(
-        glm::vec3(
-            0.0f,
-            lane->GetSurfaceHeight(),
-            lane->GetCenterZ()));
+        // Centred on the board and standing on the checkpoint lane's own
+        // surface.
+        gate->SetGroundPosition(
+            glm::vec3(
+                0.0f,
+                lane->GetSurfaceHeight(),
+                lane->GetCenterZ()));
 
-    // =========================================================
-    // BLOCK THE ENTIRE GREY WALL (LEFT AND RIGHT OF THE DOOR)
-    // =========================================================
-    const float gateZ = lane->GetCenterZ();
-    const float gateY = lane->GetSurfaceHeight();
-    const float doorWidth = 1.2f; // The width of the open door
+        // =========================================================
+        // BLOCK THE ENTIRE GREY WALL (LEFT AND RIGHT OF THE DOOR)
+        // =========================================================
+        const float gateZ = lane->GetCenterZ();
+        const float gateY = lane->GetSurfaceHeight();
+        const float doorWidth = 1.2f; // The width of the open door
 
-    // Helper to create an invisible wall using your AddObstacle logic
-    auto AddInvisibleWall = [&](float xPos, float width) {
-        // Create the obstacle directly
-        auto wall = obstacleMeshes->CreateObstacle(ObstacleType::Wall);
+        // Helper to create an invisible wall using your AddObstacle logic
+        auto AddInvisibleWall = [&](float xPos, float width) {
+            // Create the obstacle directly
+            auto wall = obstacleMeshes->CreateObstacle(ObstacleType::Wall);
 
-        // Make it invisible and as tall as the gate
-        wall->SetColor(glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
-        wall->SetDimensions(3.5f, width, 0.8f); // 3.5 tall, custom width
+            // Make it invisible and as tall as the gate
+            wall->SetColor(glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+            wall->SetDimensions(3.5f, width, 0.8f); // 3.5 tall, custom width
 
-        // Place it perfectly over the stone wall
-        wall->SetGroundPosition(glm::vec3(xPos, gateY, gateZ + 0.3f)); // Slightly forward to overlap
-        wall->SetShadowVisible(false);
-        wall->Initialize();
+            // Place it perfectly over the stone wall
+            wall->SetGroundPosition(glm::vec3(xPos, gateY, gateZ + 0.3f)); // Slightly forward to overlap
+            wall->SetShadowVisible(false);
+            wall->Initialize();
 
-        stationaryHazards.push_back(wall);
-        };
+            stationaryHazards.push_back(wall);
+            };
 
-    // LEFT WALL: Covers everything to the left of the door
-    // We place it at the exact midpoint between the door edge and the left map edge
-    float leftWallCenter = -doorWidth * 0.5f - 5.0f;
-    AddInvisibleWall(leftWallCenter, 10.0f);
+        // LEFT WALL: Covers everything to the left of the door
+        // We place it at the exact midpoint between the door edge and the left map edge
+        float leftWallCenter = -doorWidth * 0.5f - 5.0f;
+        AddInvisibleWall(leftWallCenter, 10.0f);
 
-    // RIGHT WALL: Covers everything to the right of the door
-    // We place it at the exact midpoint between the door edge and the right map edge
-    float rightWallCenter = doorWidth * 0.5f + 5.0f;
-    AddInvisibleWall(rightWallCenter, 10.0f);
+        // RIGHT WALL: Covers everything to the right of the door
+        // We place it at the exact midpoint between the door edge and the right map edge
+        float rightWallCenter = doorWidth * 0.5f + 5.0f;
+        AddInvisibleWall(rightWallCenter, 10.0f);
 
-    // =========================================================
-    // NOTE: The center gap (-0.6f to 0.6f) is left EMPTY for the door.
-    // You will walk right through the door, but the stone walls will stop you!
-    // =========================================================
+        // =========================================================
+        // NOTE: The center gap (-0.6f to 0.6f) is left EMPTY for the door.
+        // You will walk right through the door, but the stone walls will stop you!
+        // =========================================================
+
+        checkpointGates.push_back(gate);
+        checkpointGateOpening.push_back(false);
+    }
 }
 void Game::BuildKingsCage()
 {
@@ -571,6 +579,9 @@ void Game::BuildLevelHazards()
     // centre gap, matching the GDD's "moving environmental hazard that
     // follows the player," escalating alongside the stationary props
     // BuildLevelObstacles places here.
+    //
+    // Playtest feedback: at the original 2.5 it closed the gap too fast to
+    // react to. Halved to 1.25.
     {
         auto rows = FindConsecutiveRowsOfType(*level, LaneType::FenceTree);
 
@@ -581,7 +592,7 @@ void Game::BuildLevelHazards()
                     0.0f,
                     rows.front()->GetSurfaceHeight(),
                     rows.front()->GetCenterZ()),
-                2.5f);
+                1.25f);
         }
     }
 
@@ -852,21 +863,35 @@ void Game::UpdateCamera()
 
 bool Game::TryInteractWithCheckpointGate(const glm::vec3& pawnPosition)
 {
-    if (!checkpointGate)
-        return false;
+    for (std::size_t i = 0; i < checkpointGates.size(); ++i)
+    {
+        const auto& gate = checkpointGates[i];
 
-    const float distance = glm::length(
-        pawnPosition - checkpointGate->GetGroundPosition());
+        if (!gate)
+            continue;
 
-    if (distance > GameConfig::InteractRadius)
-        return false;
+        const float distance = glm::length(
+            pawnPosition - gate->GetGroundPosition());
 
-    if (checkpointGate->GetDoorAngle() < CheckpointGate::GetMaxDoorAngle())
-        checkpointGateOpening = true;
+        if (distance > GameConfig::InteractRadius)
+            continue;
 
-    // Standing at the gate at all means E belongs to it, not the ability --
-    // even if it's already fully open and there's nothing left to start.
-    return true;
+        if (gate->GetDoorAngle() < CheckpointGate::GetMaxDoorAngle())
+            checkpointGateOpening[i] = true;
+
+        // Reaching a checkpoint at all activates it, even if E only
+        // re-opens an already-open gate: a later respawn should return
+        // here, not to whichever checkpoint was activated before it.
+        if (pawn)
+            pawn->SetSpawnPosition(gate->GetGroundPosition());
+
+        // Standing at the gate at all means E belongs to it, not the
+        // ability -- even if it's already fully open and there's nothing
+        // left to start.
+        return true;
+    }
+
+    return false;
 }
 
 bool Game::TryInteractWithKingsCage(const glm::vec3& pawnPosition)
@@ -890,17 +915,20 @@ bool Game::TryInteractWithKingsCage(const glm::vec3& pawnPosition)
 
 void Game::UpdateDoors(float deltaTime)
 {
-    if (checkpointGateOpening && checkpointGate)
+    for (std::size_t i = 0; i < checkpointGates.size(); ++i)
     {
+        if (!checkpointGateOpening[i] || !checkpointGates[i])
+            continue;
+
         const float newAngle = std::min(
-            checkpointGate->GetDoorAngle() +
+            checkpointGates[i]->GetDoorAngle() +
                 GameConfig::DoorOpenSpeed * deltaTime,
             CheckpointGate::GetMaxDoorAngle());
 
-        checkpointGate->SetDoorAngle(newAngle);
+        checkpointGates[i]->SetDoorAngle(newAngle);
 
         if (newAngle >= CheckpointGate::GetMaxDoorAngle())
-            checkpointGateOpening = false;
+            checkpointGateOpening[i] = false;
     }
 
     if (kingsCageDoorOpening && kingsCage)
@@ -963,14 +991,20 @@ void Game::Update(float deltaTime)
             stationaryHazards,
             deltaTime);
 
-        // The checkpoint gate is a structure, not a hazard: its walls and
-        // leaves only need to be solid. Rebuilt from the gate every frame so
-        // the leaves' boxes follow the swing, which is what keeps the
+        // The checkpoint gates are structures, not hazards: their walls and
+        // leaves only need to be solid. Rebuilt from the gates every frame so
+        // each gate's leaves follow its own swing, which is what keeps the
         // collision and the opening animation in step.
-        if (checkpointGate)
+        if (!checkpointGates.empty())
         {
             gateCollisionBoxes.clear();
-            checkpointGate->AppendCollisionBoxes(gateCollisionBoxes);
+
+            for (const auto& gate : checkpointGates)
+            {
+                if (gate)
+                    gate->AppendCollisionBoxes(gateCollisionBoxes);
+            }
+
             hazardCollision->BlockAgainstBoxes(gateCollisionBoxes);
         }
     }
@@ -1093,8 +1127,11 @@ void Game::Render()
             renderer->Draw(hazard->GetShadow());
     }
 
-    if (checkpointGate)
-        renderer->Draw(checkpointGate->GetShadow());
+    for (const auto& gate : checkpointGates)
+    {
+        if (gate)
+            renderer->Draw(gate->GetShadow());
+    }
 
     if (capturedKing)
         renderer->Draw(capturedKing->GetShadow());
@@ -1122,11 +1159,14 @@ void Game::Render()
 
     // ---- MODELS ----
 
-    // The gate is several meshes rather than one, because its two leaves
+    // Each gate is several meshes rather than one, because its two leaves
     // turn on their own hinges.
-    if (checkpointGate)
+    for (const auto& gate : checkpointGates)
     {
-        for (const auto& part : checkpointGate->GetParts())
+        if (!gate)
+            continue;
+
+        for (const auto& part : gate->GetParts())
         {
             if (part)
                 renderer->Draw(*part);
@@ -1247,7 +1287,7 @@ void Game::Shutdown()
     stationaryHazards.clear();
     capturedKing.reset();
     kingsCage.reset();
-    checkpointGate.reset();
+    checkpointGates.clear();
 
     if (hazardManager)
     {
@@ -1309,7 +1349,12 @@ ObstacleMeshLibrary& Game::GetObstacleMeshes()
 
 CheckpointGate* Game::GetCheckpointGate()
 {
-    return checkpointGate.get();
+    return checkpointGates.empty() ? nullptr : checkpointGates.front().get();
+}
+
+const std::vector<std::shared_ptr<CheckpointGate>>& Game::GetCheckpointGates() const
+{
+    return checkpointGates;
 }
 
 KingsCage* Game::GetKingsCage()

@@ -61,9 +61,13 @@ public:
 
     ObstacleMeshLibrary& GetObstacleMeshes();
 
-    /// The gate standing on the checkpoint lane, or null when the level has
-    /// no checkpoint in it.
+    /// The first gate standing on a checkpoint lane, or null when the level
+    /// has none. Kept for callers that only ever cared about one gate; see
+    /// GetCheckpointGates() for the rest.
     CheckpointGate* GetCheckpointGate();
+
+    /// Every checkpoint gate standing on the level, in level order.
+    const std::vector<std::shared_ptr<CheckpointGate>>& GetCheckpointGates() const;
 
     /// Visual-only final objective and the King standing inside it.
     /// Both are null when the level has no King's Cage area.
@@ -111,12 +115,13 @@ public:
 
 private:
 
-    /// Stands one checkpoint gate on the level's checkpoint lane.
+    /// Stands one checkpoint gate on every one of the level's checkpoint
+    /// lanes.
     ///
     /// Unlike the showcase this is a real placement, not scaffolding: the
-    /// GDD puts a checkpoint there and the gate is what marks it. It is
-    /// past the opening view, so it comes into sight once the pawn can
-    /// walk towards it.
+    /// GDD puts a checkpoint roughly every 20 units of progress, and a gate
+    /// is what marks each one. The first is past the opening view, so it
+    /// comes into sight once the pawn can walk towards it.
     void BuildCheckpointGate();
 
     /// Draws one chess piece, whether it is a single baked mesh or an
@@ -162,9 +167,11 @@ private:
     // pawn's banked ability if neither is in range.
     //---------------------------------------------------------
 
-    /// If the pawn is within GameConfig::InteractRadius of the checkpoint
-    /// gate, starts it opening (if closed) and returns true either way --
-    /// standing at the gate means E belongs to it, not the ability.
+    /// If the pawn is within GameConfig::InteractRadius of any checkpoint
+    /// gate, starts it opening (if closed), banks it as the pawn's most
+    /// recently activated checkpoint (so a later respawn returns there
+    /// instead of the level's original start), and returns true either way
+    /// -- standing at a gate means E belongs to it, not the ability.
     bool TryInteractWithCheckpointGate(const glm::vec3& pawnPosition);
 
     /// Same idea as TryInteractWithCheckpointGate, for the king's cage
@@ -206,9 +213,10 @@ private:
 
     std::shared_ptr<CageMeshLibrary> cageMeshes;
 
-    /// The checkpoint entrance. Its parts share the library's meshes, so a
-    /// second gate later on costs a handful of transforms and nothing else.
-    std::shared_ptr<CheckpointGate> checkpointGate;
+    /// Every checkpoint entrance standing on the level, one per checkpoint
+    /// lane, in level order. Their parts share the library's meshes, so
+    /// each extra gate costs a handful of transforms and nothing else.
+    std::vector<std::shared_ptr<CheckpointGate>> checkpointGates;
 
     /// Reused between frames so rebuilding the gate's solid volumes does not
     /// allocate every tick.
@@ -225,9 +233,9 @@ private:
 
     std::shared_ptr<CollectibleManager> collectibleManager;
 
-    /// True while E has started the checkpoint gate opening and it hasn't
-    /// reached CheckpointGate::GetMaxDoorAngle() yet.
-    bool checkpointGateOpening = false;
+    /// Parallel to checkpointGates: true while E has started that gate
+    /// opening and it hasn't reached CheckpointGate::GetMaxDoorAngle() yet.
+    std::vector<bool> checkpointGateOpening;
 
     /// Same idea for the king's cage doors. Both share one opening-angle
     /// magnitude with opposite rotation signs, tracked here rather than on

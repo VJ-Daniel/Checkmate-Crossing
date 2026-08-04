@@ -157,13 +157,25 @@ void Level::Build()
     AddLanes(LaneType::SafeGrass, 3);
     AddLanes(LaneType::SpikeMud, 3);
 
-    // GDD: a checkpoint roughly every 20 units of progress.
+    // GDD: a checkpoint roughly every 20 units of progress. One here and
+    // two more further on, so a death late in the run never sends the
+    // player all the way back to the start.
     AddLanes(LaneType::Checkpoint, 1);
 
     AddLanes(LaneType::Cannonball, 3);
     AddLanes(LaneType::FenceTree, 3);
     AddLanes(LaneType::FireballLightning, 3);
+
+    // Second checkpoint: a reward right after the hardest escalation
+    // section, so reaching it doesn't mean re-running that gauntlet after
+    // every later death.
+    AddLanes(LaneType::Checkpoint, 1);
+
     AddLanes(LaneType::FinalSafeArea, 3);
+
+    // Third checkpoint: a last chance right before the finale.
+    AddLanes(LaneType::Checkpoint, 1);
+
     AddLanes(LaneType::KingsCage, 2);
 
     BuildDecorations();
@@ -496,6 +508,19 @@ int Level::FindRowOfType(LaneType type) const
     }
 
     return -1;
+}
+
+std::vector<int> Level::FindRowsOfType(LaneType type) const
+{
+    std::vector<int> rows;
+
+    for (const auto& lane : lanes)
+    {
+        if (lane && lane->GetType() == type)
+            rows.push_back(lane->GetRow());
+    }
+
+    return rows;
 }
 
 LevelBoundsXZ Level::GetPlayableBounds() const

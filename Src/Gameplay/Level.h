@@ -68,6 +68,15 @@ public:
     /// is made longer.
     int FindRowOfType(LaneType type) const;
 
+    /// Every row occupied by a lane of the given type, in ascending order.
+    ///
+    /// Same reasoning as FindRowOfType, but for sections that can appear
+    /// more than once in the layout - the level has several checkpoints,
+    /// not just one, and this is how anything placing per-checkpoint
+    /// content (the gates, this file's own respawn hook) finds all of them
+    /// without hard-coding how many there are.
+    std::vector<int> FindRowsOfType(LaneType type) const;
+
     /// Logical edges of the playable road, before an entity's own footprint
     /// is inset. Derived from the lane list rather than a hard-coded row
     /// count, so extending the level automatically extends its end boundary.
