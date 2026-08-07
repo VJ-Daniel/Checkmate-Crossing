@@ -640,6 +640,11 @@ float MovingHazard::GetArcDuration() const
     return arcDuration;
 }
 
+float MovingHazard::GetArcGroundHeight() const
+{
+    return arcStart.y;
+}
+
 float MovingHazard::GetZoneElapsed() const
 {
     return zoneElapsed;

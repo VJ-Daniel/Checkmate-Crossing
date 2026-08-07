@@ -344,7 +344,13 @@ namespace GameConfig
     constexpr float FireballBurnDuration = 2.0f;
 
     /// How far from the patch centre the fire burns.
-    constexpr float FloorFireRadius = 0.6f;
+    ///
+    /// Raised from 0.6 so the damaging area matches the flame the player can
+    /// actually see. At 0.6 the ring drawn from this number was narrower than
+    /// the flame's own base, so it was completely hidden underneath it - the
+    /// marker has to clear the art for "what you see is what burns you" to
+    /// mean anything.
+    constexpr float FloorFireRadius = 0.9f;
 
     /// Damage per tick while standing in it.
     constexpr float FloorFireDamage = 0.5f;
@@ -358,7 +364,49 @@ namespace GameConfig
     constexpr float FloorFireDamageInterval = 1.0f;
 
     /// On-screen size of the camera-facing flame billboard.
-    constexpr float FloorFireSpriteSize = 2.2f;
+    ///
+    /// Kept close to the ring's diameter (2 * FloorFireRadius) so the flame
+    /// does not visibly overhang the area that actually burns.
+    constexpr float FloorFireSpriteSize = 1.9f;
+
+    /// How many CraftPix flame frames the floor fire cycles through.
+    constexpr int FloorFireFrameCount = 8;
+
+    /// Flame animation rate. The frames are played out and back rather than
+    /// looped end-to-start: the sequence grows from a small flame to a full
+    /// one, so restarting it would snap large-to-small every cycle, while
+    /// bouncing reads as the fire breathing.
+    constexpr float FloorFireFramesPerSecond = 14.0f;
+
+    /// Radius of the red hazard ring drawn under a floor fire.
+    ///
+    /// Deliberately the damage radius itself: the ring is a promise about
+    /// where the fire hurts, so drawing it any other size would be a lie.
+    constexpr float FloorFireRingRadius = FloorFireRadius;
+
+    /// Opacity of that ring. Enough to read against the grass, low enough
+    /// to see the lane markings under it.
+    constexpr float FloorFireRingOpacity = 0.55f;
+
+    /// How long the impact flash lasts when a fireball lands.
+    constexpr float FireballImpactFlashDuration = 0.22f;
+
+    /// Diameter the flash expands from and to.
+    constexpr float FireballImpactFlashStartSize = 0.6f;
+
+    constexpr float FireballImpactFlashEndSize = 3.0f;
+
+    /// Ground shadow cast by the projectile in flight.
+    ///
+    /// Size and opacity both shrink with altitude, which is the cue that
+    /// tells the player how close to landing it is, and the position tracks
+    /// only X/Z so the shadow stays on the floor.
+    constexpr float FireballShadowSize = 1.0f;
+
+    constexpr float FireballShadowOpacity = 0.38f;
+
+    /// How much of the shadow's size and strength is lost at the apex.
+    constexpr float FireballShadowHeightFalloff = 0.55f;
 
     //---------------------------------------------------------
     // Lightning (GDD section 2)

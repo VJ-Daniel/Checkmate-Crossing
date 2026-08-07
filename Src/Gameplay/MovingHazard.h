@@ -282,6 +282,14 @@ public:
 
     float GetArcDuration() const;
 
+    /// Surface height the lob was launched from and lands back on.
+    ///
+    /// The visual's own position carries the parabola, so it is no use for
+    /// answering "where is the ground under this". A shadow needs that
+    /// separately, and subtracting the two is also how far up the projectile
+    /// currently is.
+    float GetArcGroundHeight() const;
+
     /// Progress for temporary zones such as the fireball's lingering impact.
     float GetZoneElapsed() const;
 

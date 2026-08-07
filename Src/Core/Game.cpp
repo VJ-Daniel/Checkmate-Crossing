@@ -811,6 +811,7 @@ void Game::BuildLevelHazards()
 
     // Fireball and Lightning are set up once, in the FireballLightning
     // block above. Two further blocks used to repeat both here.
+
 }
 
 void Game::RegisterFireballVolley(
@@ -997,6 +998,25 @@ void Game::LoadFireballSprites()
                 "Circle_explosion",
                 frame));
     }
+
+    // The floor fire's own flame animation, cut from the CraftPix "flame1"
+    // sequence in Src/Resources/fire.zip. Every frame shares one crop, so the
+    // flame stays anchored on its base as the animation plays instead of
+    // drifting around inside the quad.
+    for (int frame = 1; frame <= GameConfig::FloorFireFrameCount; ++frame)
+    {
+        ResourceManager::LoadTexture(
+            NumberedTextureName("floor_fire", frame),
+            NumberedTexturePath("FloorFire", "floor_fire", frame));
+    }
+
+    // One white disc, tinted per hazard: red for fire, blue for lightning.
+    // White because the sprite shader multiplies texture by tint, so a
+    // coloured source can only ever get darker -- which is why the old red
+    // warning circle could not simply be re-tinted.
+    ResourceManager::LoadTexture(
+        "hazard_circle",
+        "Src/Assets/Sprites/Warning/soft_circle.png");
 }
 
 void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
@@ -1040,11 +1060,19 @@ void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
             const float diameter = hazard->GetCatchRadius() * 2.0f;
 
             Sprite warning = Sprite::CreateGroundDecal(
-                "lightning_warning_circle",
+                "hazard_circle",
                 ground,
                 glm::vec2(diameter, diameter));
 
-            warning.tint = glm::vec3(1.0f, 0.0f, 0.0f);
+            // Blue, because red now belongs to fire. One glance at the floor
+            // should say which hazard is about to happen without reading the
+            // shape: red ring means burning ground, blue ring means a bolt is
+            // coming.
+            //
+            // This is why the marker moved off red_circle.png and onto the
+            // white disc -- the shader multiplies texture by tint, so a red
+            // source tinted blue comes out black rather than blue.
+            warning.tint = glm::vec3(0.25f, 0.55f, 1.0f);
 
             // Flashes, and flashes faster as the countdown runs out: a
             // square wave whose period shortens toward zero. Far harder to
@@ -1169,12 +1197,78 @@ void Game::AppendFireballSprites(std::vector<Sprite>& frameSprites) const
             // still reads as a burning ball rather than one slow morph.
             const int frame = 1 + (static_cast<int>(t * 16.0f) % 8);
 
+            const glm::vec3 velocity = hazard->GetVelocity();
+
+            // The ground under the projectile, which the arc's own height is
+            // measured from. GetGroundPosition carries the parabola, so it
+            // cannot answer this by itself.
+            const float groundY = hazard->GetArcGroundHeight();
+            const float altitude = std::max(ground.y - groundY, 0.0f);
+
+            //---------------------------------------------------------
+            // Shadow, drawn first so the flame sits over it.
+            //
+            // Tracks X/Z only and stays pinned to the lane surface, which is
+            // what makes it read as a shadow rather than a second fireball.
+            // It shrinks and fades with altitude, so watching it grow tells
+            // the player where and when the fireball is about to land.
+            //---------------------------------------------------------
+            const float peak =
+                std::max(GameConfig::FireballArcHeight, 0.001f);
+
+            const float heightFactor = std::clamp(
+                altitude / peak,
+                0.0f,
+                1.0f);
+
+            const float shadowScale =
+                1.0f - GameConfig::FireballShadowHeightFalloff * heightFactor;
+
+            Sprite shadow = Sprite::CreateGroundDecal(
+                "hazard_circle",
+                glm::vec3(ground.x, groundY, ground.z),
+                glm::vec2(
+                    GameConfig::FireballShadowSize * shadowScale,
+                    GameConfig::FireballShadowSize * shadowScale));
+
+            shadow.tint = glm::vec3(0.0f, 0.0f, 0.0f);
+            shadow.opacity = GameConfig::FireballShadowOpacity * shadowScale;
+            shadow.layer = 12;
+
+            frameSprites.push_back(shadow);
+
+            //---------------------------------------------------------
+            // The projectile.
+            //---------------------------------------------------------
+
+            // Gentle breathing so a ball in flight is never a frozen decal.
+            const float pulse =
+                1.0f + 0.08f * std::sin(t * 18.0f);
+
             Sprite fireball = Sprite::CreateBillboard(
                 NumberedTextureName("fire_spell", frame),
                 ground + glm::vec3(0.0f, GameConfig::FireballHitRadius, 0.0f),
-                glm::vec2(1.6f, 0.9f));
+                glm::vec2(1.6f * pulse, 0.9f * pulse));
 
-            fireball.flipX = hazard->GetVelocity().x > 0.0f;
+            // The art is drawn nose-left with its tail streaming right, so
+            // flipping is what points it the way it is actually going.
+            const bool movingRight = velocity.x > 0.0f;
+
+            fireball.flipX = movingRight;
+
+            // ...and this is the part a left/right flip alone cannot do. The
+            // path is a parabola, so the fireball climbs and then dives; kept
+            // level it visibly flies sideways through its own arc. Aiming the
+            // nose along the velocity makes it follow the curve it is on.
+            //
+            // The nose sits at 180 degrees unflipped and 0 flipped, so the
+            // rotation needed is the travel angle minus whichever that is.
+            const float travelDegrees = glm::degrees(
+                std::atan2(velocity.y, velocity.x));
+
+            fireball.rotationDegrees =
+                movingRight ? travelDegrees : travelDegrees - 180.0f;
+
             fireball.layer = 24;
             frameSprites.push_back(fireball);
             continue;
@@ -1189,17 +1283,63 @@ void Game::AppendFireballSprites(std::vector<Sprite>& frameSprites) const
                 hazard->GetZoneElapsed() / duration,
                 0.0f,
                 1.0f);
-            const int frame = std::clamp(
-                1 + static_cast<int>(t * 10.0f),
-                1,
-                10);
+            const float elapsed = hazard->GetZoneElapsed();
 
-            // The floor fire itself: a camera-facing billboard rather than a
-            // mesh, so it reads as flame from any angle the camera takes.
+            //---------------------------------------------------------
+            // The red hazard ring.
+            //
+            // Drawn first, and drawn for the hazard's whole life, because it
+            // is the honest statement of where the fire hurts: it is sized
+            // straight from the damage radius the collision pass tests. The
+            // flame above it is taller and wider than its own footprint, so
+            // without this the dangerous area would be guesswork.
+            //---------------------------------------------------------
+            Sprite ring = Sprite::CreateGroundDecal(
+                "hazard_circle",
+                ground,
+                glm::vec2(
+                    GameConfig::FloorFireRingRadius * 2.0f,
+                    GameConfig::FloorFireRingRadius * 2.0f));
+
+            ring.tint = glm::vec3(1.0f, 0.12f, 0.05f);
+
+            // Pulses gently, and fades out with the hazard so the warning
+            // never outlives the danger it is warning about.
+            const float ringPulse = 0.85f + 0.15f * std::sin(elapsed * 7.0f);
+
+            ring.opacity =
+                GameConfig::FloorFireRingOpacity * ringPulse * (1.0f - t * 0.5f);
+
+            ring.layer = 14;
+
+            frameSprites.push_back(ring);
+
+            //---------------------------------------------------------
+            // The flame.
+            //
+            // Played out and back over the CraftPix frames rather than
+            // looped end-to-start: the sequence grows from a small flame to
+            // a full one, so wrapping would snap it large-to-small once a
+            // cycle. Bouncing reads as the fire breathing.
+            //---------------------------------------------------------
+            constexpr int LastFrame = GameConfig::FloorFireFrameCount - 1;
+
+            const int tick = static_cast<int>(
+                elapsed * GameConfig::FloorFireFramesPerSecond);
+
+            // Walk 0..last..0 by folding the counter about the end.
+            const int cycle = tick % (LastFrame * 2);
+            const int step = cycle <= LastFrame
+                ? cycle
+                : (LastFrame * 2 - cycle);
+
+            const int frame = std::clamp(step + 1, 1, GameConfig::FloorFireFrameCount);
+
+            // Camera-facing rather than flat on the floor: flames stand up.
             // Sat half its own height up so the quad's bottom edge meets the
             // ground it is burning on instead of sinking into it.
             Sprite fire = Sprite::CreateBillboard(
-                NumberedTextureName("fireball_explosion", frame),
+                NumberedTextureName("floor_fire", frame),
                 ground + glm::vec3(
                     0.0f,
                     GameConfig::FloorFireSpriteSize * 0.5f,
@@ -1215,21 +1355,37 @@ void Game::AppendFireballSprites(std::vector<Sprite>& frameSprites) const
 
             frameSprites.push_back(fire);
 
-            // A scorch decal underneath, sized to the damaging radius. This
-            // is what tells the player exactly where the ground is unsafe -
-            // the billboard above it is tall and would otherwise overstate
-            // the footprint.
-            Sprite scorch = Sprite::CreateGroundDecal(
-                NumberedTextureName("fireball_explosion", frame),
-                ground,
-                glm::vec2(
-                    GameConfig::FloorFireRadius * 2.0f,
-                    GameConfig::FloorFireRadius * 2.0f));
+            //---------------------------------------------------------
+            // Impact flash.
+            //
+            // Only for the first fraction of a second, and only expanding.
+            // It exists to cover the handover: the projectile is destroyed
+            // and the fire created on the same frame, and without something
+            // bridging them the eye reads a blink rather than a landing.
+            //---------------------------------------------------------
+            if (elapsed < GameConfig::FireballImpactFlashDuration)
+            {
+                const float flashT = std::clamp(
+                    elapsed / GameConfig::FireballImpactFlashDuration,
+                    0.0f,
+                    1.0f);
 
-            scorch.opacity = 0.55f;
-            scorch.layer = 18;
+                const float size = glm::mix(
+                    GameConfig::FireballImpactFlashStartSize,
+                    GameConfig::FireballImpactFlashEndSize,
+                    flashT);
 
-            frameSprites.push_back(scorch);
+                Sprite flash = Sprite::CreateGroundDecal(
+                    "hazard_circle",
+                    ground,
+                    glm::vec2(size, size));
+
+                flash.tint = glm::vec3(1.0f, 0.78f, 0.35f);
+                flash.opacity = 0.85f * (1.0f - flashT);
+                flash.layer = 19;
+
+                frameSprites.push_back(flash);
+            }
         }
     }
 }
