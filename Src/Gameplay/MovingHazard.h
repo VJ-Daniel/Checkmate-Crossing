@@ -125,6 +125,26 @@ public:
     /// Connects the visual-only rolling component to this mover. Translation
     /// remains owned here; RollingMotion derives spin from the actual distance
     /// travelled so speed changes and reversals stay visually correct.
+    //---------------------------------------------------------
+    // Facing
+    //---------------------------------------------------------
+
+    /// Turns the visual to face the way it is travelling.
+    ///
+    /// On by default. Every hazard model with a nose - the arrow, the spear,
+    /// the cow - is authored pointing +X, so one rule serves all of them.
+    ///
+    /// This is what stops the cow permanently facing whichever way it was
+    /// placed while it chases the player around, and what turns a looping
+    /// arrow round on its return leg instead of flying it tail-first.
+    ///
+    /// Automatically disabled by EnableRolling: a rolling rock or log
+    /// already owns its rotation, and two systems writing the same transform
+    /// would fight every frame.
+    void SetFacesTravel(bool facesTravel);
+
+    bool GetFacesTravel() const;
+
     void EnableRolling(float radius, RollAxisMode axisMode);
 
     //-----------------------------------------------------------
@@ -179,6 +199,19 @@ private:
     bool active = true;
 
     bool expired = false;
+
+    /// Turns the visual toward its current velocity at a fixed rate.
+    void UpdateFacing(float deltaTime);
+
+    /// Whether the visual turns to match its travel direction.
+    bool facesTravel = true;
+
+    /// Current smoothed heading in degrees, and whether it has been set at
+    /// least once. The first heading is snapped rather than turned toward,
+    /// so a hazard does not visibly swing round on the frame it spawns.
+    float facingDegrees = 0.0f;
+
+    bool facingInitialised = false;
 
     bool rollingEnabled = false;
 

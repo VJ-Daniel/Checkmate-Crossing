@@ -559,11 +559,21 @@ void Pawn::TryActivateAbility()
 
     case PieceType::Queen:
 
-        // Knight's speed/immunity plus Rook's shield together, for a
-        // shorter duration -- the GDD's "combines multiple abilities."
+        // All three at once, for a shorter duration -- the GDD's "combines
+        // multiple abilities."
+        //
+        // The speed boost and the hazard immunity come from
+        // GetSpeedMultiplier and IsImmuneToHazards, which both already test
+        // for Queen as well as Knight; the shield comes from HasShield,
+        // which only needs the flag below. The Bishop's clearing pulse was
+        // the one part missing: it fires once rather than running on a
+        // timer, so it has to be raised here the same way the Bishop case
+        // raises it, and it is the reason the Queen looked like she only
+        // had the Knight's ability.
         abilityActive = true;
         abilityTimeRemaining = GameConfig::QueenAbilityDuration;
         shieldAvailable = true;
+        bishopPulsePending = true;
         break;
 
     case PieceType::Bishop:

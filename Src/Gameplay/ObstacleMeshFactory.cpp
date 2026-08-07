@@ -439,11 +439,82 @@ namespace ObstacleMeshFactory
         }
 
         case HazardType::Fireball:
+        {
+            // Authored from y = 0 up, because one mesh serves two jobs: the
+            // fireball sweeping across the lane, and the burn patch it
+            // leaves behind (HazardManager spawns those as a temporary zone
+            // of the same type). A ball authored at flight height would
+            // hover above the ground as a patch.
+            const float radius = 0.20f;
+            const float centerY = radius;
+
+            // Scorched core, barely visible in flight but the whole of the
+            // patch once the flames have settled onto the ground.
+            builder.SetColor(ObstaclePalette::Ember);
+            builder.AddFacetedSphere(
+                glm::vec3(0.0f, centerY, 0.0f), radius, 8, 6, 0.18f, 4242u);
+
+            builder.SetColor(ObstaclePalette::Flame);
+            builder.AddFacetedSphere(
+                glm::vec3(0.0f, centerY + 0.045f, 0.0f),
+                radius * 0.78f, 8, 6, 0.22f, 99u);
+
+            builder.SetColor(ObstaclePalette::FlameCore);
+            builder.AddFacetedSphere(
+                glm::vec3(0.0f, centerY + 0.085f, 0.0f),
+                radius * 0.44f, 8, 5);
+
+            // Two tongues licking up off the top. They cost two boxes and
+            // are what stop the fireball reading as a plain orange ball.
+            builder.SetColor(ObstaclePalette::Flame);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                builder.AddSlabAt(
+                    static_cast<float>(side) * 0.085f, 0.0f,
+                    0.07f, 0.07f,
+                    centerY + 0.11f, centerY + 0.27f);
+            }
+
+            model.height = centerY + 0.27f;
+            model.footprintWidth = radius * 2.2f;
+            model.boundingRadius = radius;
+            break;
+        }
+
         case HazardType::Lightning:
-            // Gameplay support is present, but these visuals are intentionally
-            // deferred to sprites/billboards. Do not manufacture an empty 3D
-            // mesh: a null mesh is the explicit "no visual yet" state.
-            return model;
+        {
+            // One mesh covering both phases of WarningThenStrike: a flat pad
+            // marking the danger area on the ground, and the bolt standing in
+            // it. MovingHazard dims the whole thing while it is only
+            // telegraphing and brightens it on the strike, so the player gets
+            // the warning the GDD asks for without a second model.
+            builder.SetColor(ObstaclePalette::BoltEdge);
+            builder.AddSlabAt(0.0f, 0.0f, 0.86f, 0.86f, 0.0f, 0.03f);
+
+            // The bolt itself: stepped segments that alternate side to side,
+            // so it reads as a zigzag rather than a post.
+            builder.SetColor(ObstaclePalette::BoltCore);
+
+            constexpr int Segments = 5;
+            constexpr float SegmentHeight = 0.25f;
+
+            for (int segment = 0; segment < Segments; ++segment)
+            {
+                const float bottom = 0.03f + SegmentHeight * segment;
+                const float offset = (segment % 2 == 0) ? -0.055f : 0.055f;
+
+                builder.AddSlabAt(
+                    offset, 0.0f,
+                    0.10f, 0.10f,
+                    bottom, bottom + SegmentHeight);
+            }
+
+            model.height = 0.03f + SegmentHeight * Segments;
+            model.footprintWidth = 0.86f;
+            model.footprintDepth = 0.86f;
+            break;
+        }
         }
 
         model.mesh = builder.Build();

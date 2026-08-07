@@ -527,12 +527,19 @@ void Game::BuildLevelHazards()
                 3.5f,
                 [this, y, z, halfWidth]()
                 {
-                    hazardManager->SpawnCurvedHazard(
+                    // Straight down its own lane, not bowed.
+                    //
+                    // The curved sweep offsets the path perpendicular to
+                    // itself, and a lane runs along X - so the bow was in Z
+                    // and carried the spear a full 1.2 units out of the row
+                    // it was fired along. SpawnCurvedHazard is left in place
+                    // for the fireball, which the GDD does want curving.
+                    hazardManager->SpawnLinearHazard(
                         HazardType::Spear,
                         glm::vec3(-halfWidth - 0.5f, y, z),
                         glm::vec3(halfWidth + 0.5f, y, z),
                         3.2f,
-                        1.2f);
+                        false);
                 });
         }
     }

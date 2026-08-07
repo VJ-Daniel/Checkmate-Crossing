@@ -24,7 +24,7 @@ enum class ObstacleType
 ///
 /// Movement lives in MovingHazard, never in this shared taxonomy. Arrow,
 /// Spear, Cannonball, RollingRock and RollingLog currently have reusable 3D
-/// assets. Fireball and Lightning deliberately remain meshless until their
+/// assets. Fireball and Lightning are built from the same procedural boxes as the
 /// planned sprite/billboard visuals are available.
 enum class HazardType
 {

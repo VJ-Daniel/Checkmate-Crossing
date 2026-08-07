@@ -10,6 +10,8 @@
 
 #include "MovingHazard.h"
 
+#include <cmath>
+
 #include <algorithm>
 
 #include <gtc/matrix_transform.hpp>
@@ -137,9 +139,74 @@ void MovingHazard::SetFollowTarget(float maxSpeed)
     velocity = glm::vec3(0.0f);
 }
 
+void MovingHazard::SetFacesTravel(bool shouldFaceTravel)
+{
+    facesTravel = shouldFaceTravel;
+}
+
+bool MovingHazard::GetFacesTravel() const
+{
+    return facesTravel;
+}
+
+void MovingHazard::UpdateFacing(float deltaTime)
+{
+    if (!facesTravel || !visual || deltaTime <= 0.0f)
+        return;
+
+    // Below this the direction is numerical noise rather than travel, and
+    // turning toward it is exactly what makes a near-stationary hazard
+    // jitter. Hold the last heading instead.
+    constexpr float MinimumSpeed = 0.05f;
+
+    // Degrees per second. Fast enough that a hazard reversing at the end of
+    // its sweep has turned round before it is back on screen, slow enough
+    // that the turn reads as a turn rather than a snap.
+    constexpr float TurnDegreesPerSecond = 540.0f;
+
+    const glm::vec3 travel(velocity.x, 0.0f, velocity.z);
+
+    if (glm::length(travel) < MinimumSpeed)
+        return;
+
+    // Every hazard model with a nose is authored pointing +X, and a Y
+    // rotation of theta carries +X round to (cos theta, 0, -sin theta).
+    // Aiming that at the travel direction is therefore atan2(-z, x).
+    const float target =
+        glm::degrees(std::atan2(-travel.z, travel.x));
+
+    if (!facingInitialised)
+    {
+        facingDegrees = target;
+        facingInitialised = true;
+    }
+    else
+    {
+        // Shortest way round, so a heading crossing the +/-180 seam turns
+        // the short way instead of spinning all the way back through zero.
+        float delta = target - facingDegrees;
+
+        while (delta > 180.0f)
+            delta -= 360.0f;
+
+        while (delta < -180.0f)
+            delta += 360.0f;
+
+        const float maxStep = TurnDegreesPerSecond * deltaTime;
+
+        facingDegrees += glm::clamp(delta, -maxStep, maxStep);
+    }
+
+    visual->GetTransform().SetRotation(0.0f, facingDegrees, 0.0f);
+}
+
 void MovingHazard::EnableRolling(float radius, RollAxisMode axisMode)
 {
     rollingEnabled = true;
+
+    // A rolling rock or log writes its own rotation every frame, so the
+    // facing pass has to stand down or the two fight over the transform.
+    facesTravel = false;
     rollingPivotHeight = std::max(radius, 0.0001f);
     rollingMotion.SetRadius(radius);
     rollingMotion.SetAxisMode(axisMode);
@@ -180,6 +247,11 @@ void MovingHazard::Update(float deltaTime, const glm::vec3& targetGroundPosition
         UpdateFollowTarget(deltaTime, targetGroundPosition);
         break;
     }
+
+    // Last, so it reads the velocity the pattern above has just settled on.
+    // One pass for every pattern rather than one per pattern: the rule is
+    // the same whichever way the hazard decided to move.
+    UpdateFacing(deltaTime);
 }
 
 void MovingHazard::UpdateLinearSweep(float deltaTime)
@@ -275,6 +347,20 @@ void MovingHazard::UpdateWarningThenStrike(float deltaTime)
 {
     phaseElapsed += deltaTime;
     velocity = glm::vec3(0.0f);
+
+    // Telegraph dim, strike bright.
+    //
+    // The object colour multiplies the mesh's own vertex tints, so one model
+    // reads as both phases without a second mesh or a visibility toggle -
+    // and the player can tell at a glance whether standing there is merely
+    // unwise or currently lethal, which is the whole point of a hazard that
+    // announces itself before it fires.
+    if (visual)
+    {
+        visual->SetColor(active
+            ? glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
+            : glm::vec4(0.42f, 0.46f, 0.58f, 1.0f));
+    }
 
     if (active)
     {
