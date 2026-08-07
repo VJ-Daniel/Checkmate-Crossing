@@ -617,7 +617,6 @@ void Game::BuildLevelHazards()
         }
     }
 
-<<<<<<< HEAD
     // FenceTree section: the Cow starts chasing from the first row's
     // centre gap, matching the GDD's "moving environmental hazard that
     // follows the player," escalating alongside the stationary props
@@ -638,24 +637,6 @@ void Game::BuildLevelHazards()
                 1.25f);
         }
     }
-=======
-    // =========================================================
-    // COW: Moving environmental hazard that follows the player
-    // =========================================================
-    //{
-    //    auto rows = FindConsecutiveRowsOfType(*level, LaneType::FenceTree);
-
-    //    if (!rows.empty() && rows.front())
-    //    {
-    //        hazardManager->SpawnCow(
-    //            glm::vec3(
-    //                0.0f,
-    //                rows.front()->GetSurfaceHeight(),
-    //                rows.front()->GetCenterZ()),
-    //            2.5f);
-    //    }
-    //}
->>>>>>> origin/kaung
 
     // FireballLightning section (3 rows): a repeating curved Fireball
     // sweep (burn patches are already automatic in HazardManager::Update),
@@ -982,13 +963,8 @@ void Game::UpdateDoors(float deltaTime)
             continue;
 
         const float newAngle = std::min(
-<<<<<<< HEAD
             checkpointGates[i]->GetDoorAngle() +
                 GameConfig::DoorOpenSpeed * deltaTime,
-=======
-            checkpointGate->GetDoorAngle() +
-            GameConfig::DoorOpenSpeed * deltaTime,
->>>>>>> origin/kaung
             CheckpointGate::GetMaxDoorAngle());
 
         checkpointGates[i]->SetDoorAngle(newAngle);
@@ -1057,11 +1033,6 @@ void Game::Update(float deltaTime)
             stationaryHazards,
             deltaTime);
 
-<<<<<<< HEAD
-        // The checkpoint gates are structures, not hazards: their walls and
-        // leaves only need to be solid. Rebuilt from the gates every frame so
-        // each gate's leaves follow its own swing, which is what keeps the
-=======
         if (kingsCage)
         {
             std::vector<CollisionBox> cageBoxes;
@@ -1069,10 +1040,9 @@ void Game::Update(float deltaTime)
             hazardCollision->BlockAgainstBoxes(cageBoxes);
         }
 
-        // The checkpoint gate is a structure, not a hazard: its walls and
-        // leaves only need to be solid. Rebuilt from the gate every frame so
-        // the leaves' boxes follow the swing, which is what keeps the
->>>>>>> origin/kaung
+        // The checkpoint gates are structures, not hazards: their walls and
+        // leaves only need to be solid. Rebuilt from the gates every frame so
+        // each gate's leaves follow its own swing, which is what keeps the
         // collision and the opening animation in step.
         if (!checkpointGates.empty())
         {
