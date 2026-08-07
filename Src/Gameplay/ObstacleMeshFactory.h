@@ -27,19 +27,6 @@ namespace ObstaclePalette
     inline const glm::vec3 HideDark = glm::vec3(0.24f, 0.22f, 0.22f);
     inline const glm::vec3 Mud = glm::vec3(0.30f, 0.22f, 0.12f);
     inline const glm::vec3 MudWet = glm::vec3(0.38f, 0.29f, 0.16f);
-
-    /// Fire and lightning.
-    ///
-    /// The brightest materials in the set, deliberately. Everything else on
-    /// the battlefield is muted stone, timber and grass, so a hazard that
-    /// kills on contact has to separate from all of it at a glance - and
-    /// these two are the only ones the player cannot block or jump.
-    inline const glm::vec3 Ember = glm::vec3(0.55f, 0.16f, 0.06f);
-    inline const glm::vec3 Flame = glm::vec3(0.92f, 0.44f, 0.13f);
-    inline const glm::vec3 FlameCore = glm::vec3(0.98f, 0.80f, 0.32f);
-
-    inline const glm::vec3 BoltEdge = glm::vec3(0.62f, 0.68f, 0.95f);
-    inline const glm::vec3 BoltCore = glm::vec3(0.98f, 0.96f, 0.72f);
 }
 
 /// A finished prop model plus the measurements the game needs from it.
@@ -120,9 +107,9 @@ namespace ObstacleMeshFactory
     /// renderer remain type-agnostic.
     ObstacleModel Create(ObstacleType type);
 
-    /// Fireball and Lightning are built like every other hazard;
-    /// their gameplay identifiers remain available while their future sprite
-    /// visuals stay outside this 3D factory.
+    /// Fireball and Lightning intentionally return a model without a mesh;
+    /// their gameplay identifiers remain available while their sprite visuals
+    /// are owned by Game, outside this 3D factory.
     ObstacleModel Create(HazardType type);
 }
 
