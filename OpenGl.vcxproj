@@ -172,7 +172,11 @@
       <AdditionalDependencies>glfw3.lib;opengl32.lib;User32.lib;Gdi32.lib;Shell32.lib;Winmm.lib;glew32s.lib;SDL2_mixer.lib;SDL2.lib;SDL2main.lib</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y /D "$(SolutionDir)Src\Dependencies\SDL2\lib\x86\*.dll" "$(OutDir)"</Command>
+      <Command>
+		  xcopy /Y /D "$(SolutionDir)Src\Dependencies\SDL2\lib\x86\*.dll" "$(OutDir)"
+		  xcopy /Y /D "$(SolutionDir)Src\Dependencies\SDL2_mixer\lib\x86\*.dll" "$(OutDir)"
+		  xcopy /Y /D "$(SolutionDir)Src\Dependencies\SDL2_mixer\lib\x86\optional\*.dll" "$(OutDir)"
+	  </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
