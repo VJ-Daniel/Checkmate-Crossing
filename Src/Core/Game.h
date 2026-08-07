@@ -181,6 +181,22 @@ private:
     /// functionally open something instead of just changing a flag.
     void UpdateDoors(float deltaTime);
 
+    /// Loads the individual PNG frames used by the lightning warning,
+    /// strike and impact sprites.
+    void LoadLightningSprites();
+
+    /// Loads the individual PNG frames used by the fireball projectile and
+    /// lingering impact sprites.
+    void LoadFireballSprites();
+
+    /// Adds per-frame lightning sprites for active lightning hazards.
+    /// These are rebuilt every Render call from the hazard timing state.
+    void AppendLightningSprites(std::vector<Sprite>& frameSprites) const;
+
+    /// Adds per-frame fireball sprites for the flying projectile and the
+    /// temporary impact zone left behind after it lands.
+    void AppendFireballSprites(std::vector<Sprite>& frameSprites) const;
+
     std::shared_ptr<Camera3D> camera;
 
     /// Distinguishes the first exact placement from later dead-zone updates.

@@ -246,7 +246,7 @@ namespace GameConfig
 
     /// How long a fireball's residual fire patch lingers after impact,
     /// per the GDD's "leave fire behind that deals continuous damage."
-    constexpr float FireballBurnDuration = 3.0f;
+    constexpr float FireballBurnDuration = 2.0f;
 
     /// How close the pawn needs to be to a collectible ally to pick it up.
     constexpr float CollectiblePickupRadius = 0.6f;

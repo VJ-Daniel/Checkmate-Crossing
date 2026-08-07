@@ -174,6 +174,24 @@ public:
 
     HazardMovementPattern GetMovementPattern() const;
 
+    /// Current time inside the warning or strike phase. Only meaningful for
+    /// WarningThenStrike hazards such as lightning.
+    float GetPhaseElapsed() const;
+
+    float GetWarningDuration() const;
+
+    float GetStrikeDuration() const;
+
+    /// Progress for curved projectiles such as fireballs.
+    float GetCurveElapsed() const;
+
+    float GetCurveDuration() const;
+
+    /// Progress for temporary zones such as the fireball's lingering impact.
+    float GetZoneElapsed() const;
+
+    float GetZoneDuration() const;
+
 private:
 
     void UpdateLinearSweep(float deltaTime);
