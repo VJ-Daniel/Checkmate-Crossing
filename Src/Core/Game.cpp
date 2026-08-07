@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <unordered_map>
 
 #include "GameConfig.h"
 #include "ResourceManager.h"
@@ -185,6 +186,9 @@ bool Game::Initialize(
 
     spriteRenderer->SetScreenSize(screenWidth, screenHeight);
 
+    hudScreenWidth = screenWidth;
+    hudScreenHeight = screenHeight;
+
     // 1. Create the libraries FIRST before anything else uses them.
     pieceMeshes = std::make_shared<PieceMeshLibrary>();
 
@@ -194,6 +198,7 @@ bool Game::Initialize(
 
     LoadLightningSprites();
     LoadFireballSprites();
+    LoadHudSprites();
 
     // 2. Build the level
     level = std::make_shared<Level>();
@@ -322,6 +327,7 @@ void Game::BuildCheckpointGate()
 
     checkpointGates.clear();
     checkpointGateOpening.clear();
+    checkpointGateActivated.clear();
 
     for (int row : level->FindRowsOfType(LaneType::Checkpoint))
     {
@@ -390,6 +396,7 @@ void Game::BuildCheckpointGate()
 
         checkpointGates.push_back(gate);
         checkpointGateOpening.push_back(false);
+        checkpointGateActivated.push_back(false);
     }
 }
 void Game::BuildKingsCage()
@@ -999,6 +1006,67 @@ void Game::LoadFireballSprites()
     }
 }
 
+void Game::LoadHudSprites()
+{
+    // Health pip -- a heart. Tinted red when filled, dim grey when empty.
+    ResourceManager::LoadTexture(
+        "hud_pip_square",
+        "Src/Assets/Sprites/UI/hud_pip_square.png");
+
+    // Checkpoint pip -- its own marker, distinct from the health heart.
+    // Tinted per use, same as the health pip.
+    ResourceManager::LoadTexture(
+        "hud_checkpoint_pip",
+        "Src/Assets/Sprites/UI/hud_checkpoint_pip.png");
+
+    // Ability duration bar background/fill -- a plain square. A heart (or
+    // any non-rectangular icon) stretched into a thin bar reads as broken,
+    // so this stays its own flat placeholder rather than reusing an icon.
+    ResourceManager::LoadTexture(
+        "hud_bar_fill",
+        "Src/Assets/Sprites/UI/hud_bar_fill.png");
+
+    // Ability indicator: one universal icon regardless of which piece
+    // granted the ability. The current-piece icon already shows which
+    // piece is involved, so this slot just has to read as "ability
+    // ready/active" at a glance.
+    ResourceManager::LoadTexture(
+        "hud_icon_ability",
+        "Src/Assets/Sprites/UI/hud_icon_ability.png");
+
+    // Interact prompt, shown near the pawn while it's in range of a gate
+    // or the King's Cage.
+    ResourceManager::LoadTexture(
+        "hud_interact_prompt",
+        "Src/Assets/Sprites/UI/hud_interact_prompt.png");
+
+    // One silhouette per PieceType, used by the current-piece indicator.
+    for (int i = 0; i < PieceTypeCount; ++i)
+    {
+        const PieceType type = PieceTypeFromIndex(i);
+
+        ResourceManager::LoadTexture(
+            PieceIconTextureName(type),
+            std::string("Src/Assets/Sprites/UI/") +
+                PieceIconTextureName(type) + ".png");
+    }
+}
+
+const std::string& Game::PieceIconTextureName(PieceType type)
+{
+    static const std::unordered_map<PieceType, std::string> names = {
+        { PieceType::Pawn,        "hud_icon_Pawn" },
+        { PieceType::Rook,        "hud_icon_Rook" },
+        { PieceType::Knight,      "hud_icon_Knight" },
+        { PieceType::Bishop,      "hud_icon_Bishop" },
+        { PieceType::Queen,       "hud_icon_Queen" },
+        { PieceType::King,        "hud_icon_King" },
+        { PieceType::MountedPawn, "hud_icon_MountedPawn" },
+    };
+
+    return names.at(type);
+}
+
 void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
 {
     if (!hazardManager)
@@ -1431,6 +1499,212 @@ void Game::AppendAbilityPulseSprites(std::vector<Sprite>& frameSprites) const
     }
 }
 
+void Game::AppendHudSprites(std::vector<Sprite>& frameSprites) const
+{
+    if (!pawn)
+        return;
+
+    constexpr int LayerBack = 200;
+    constexpr int LayerFill = 201;
+    constexpr int LayerIcon = 202;
+
+    // ---- Health pips (top-left) ----
+    {
+        const int maxPips = static_cast<int>(GameConfig::MaxPawnHealth);
+        const int filledPips = static_cast<int>(std::round(pawn->GetHealth()));
+
+        for (int i = 0; i < maxPips; ++i)
+        {
+            Sprite pip = Sprite::CreateScreen(
+                "hud_pip_square",
+                glm::vec2(
+                    GameConfig::HudMargin +
+                        GameConfig::HudHealthPipSize * 0.5f +
+                        i * (GameConfig::HudHealthPipSize +
+                            GameConfig::HudHealthPipSpacing),
+                    GameConfig::HudMargin +
+                        GameConfig::HudHealthPipSize * 0.5f),
+                glm::vec2(
+                    GameConfig::HudHealthPipSize,
+                    GameConfig::HudHealthPipSize));
+
+            pip.tint = (i < filledPips)
+                ? GameConfig::HudHealthFilledTint
+                : GameConfig::HudEmptyTint;
+            pip.layer = LayerFill;
+
+            frameSprites.push_back(pip);
+        }
+    }
+
+    // ---- Checkpoint pips (top-centre) ----
+    {
+        const int pipCount = static_cast<int>(checkpointGates.size());
+        const float totalWidth =
+            pipCount * GameConfig::HudCheckpointPipSize +
+            std::max(0, pipCount - 1) * GameConfig::HudCheckpointPipSpacing;
+        const float startX = hudScreenWidth * 0.5f - totalWidth * 0.5f;
+
+        for (int i = 0; i < pipCount; ++i)
+        {
+            Sprite pip = Sprite::CreateScreen(
+                "hud_checkpoint_pip",
+                glm::vec2(
+                    startX +
+                        GameConfig::HudCheckpointPipSize * 0.5f +
+                        i * (GameConfig::HudCheckpointPipSize +
+                            GameConfig::HudCheckpointPipSpacing),
+                    GameConfig::HudMargin +
+                        GameConfig::HudCheckpointPipSize * 0.5f),
+                glm::vec2(
+                    GameConfig::HudCheckpointPipSize,
+                    GameConfig::HudCheckpointPipSize));
+
+            const bool activated =
+                i < static_cast<int>(checkpointGateActivated.size()) &&
+                checkpointGateActivated[i];
+
+            pip.tint = activated
+                ? GameConfig::HudFilledTint
+                : GameConfig::HudEmptyTint;
+            pip.layer = LayerFill;
+
+            frameSprites.push_back(pip);
+        }
+    }
+
+    // ---- Ability icon + duration bar (top-right) ----
+    {
+        const glm::vec2 iconCenter(
+            hudScreenWidth - GameConfig::HudMargin -
+                GameConfig::HudAbilityIconSize * 0.5f,
+            GameConfig::HudMargin +
+                GameConfig::HudAbilityIconSize * 0.5f);
+
+        // One universal icon whenever an ability is banked or active --
+        // which piece granted it is already shown by the current-piece
+        // icon below, so this slot just needs to read as "ability ready".
+        const bool haveAbility =
+            pawn->IsAbilityActive() || pawn->HasStoredPiece();
+
+        if (haveAbility)
+        {
+            Sprite icon = Sprite::CreateScreen(
+                "hud_icon_ability",
+                iconCenter,
+                glm::vec2(
+                    GameConfig::HudAbilityIconSize,
+                    GameConfig::HudAbilityIconSize));
+
+            icon.layer = LayerIcon;
+            frameSprites.push_back(icon);
+        }
+
+        // Duration bar only while a timed ability is actually running --
+        // GetAbilityDurationFraction() is 0 for Bishop, whose effect is
+        // instant, so its icon appears with no bar under it.
+        const float fraction = pawn->GetAbilityDurationFraction();
+
+        if (fraction > 0.0f)
+        {
+            const glm::vec2 barCenter(
+                iconCenter.x,
+                iconCenter.y +
+                    GameConfig::HudAbilityIconSize * 0.5f +
+                    GameConfig::HudAbilityBarGap +
+                    GameConfig::HudAbilityBarHeight * 0.5f);
+
+            Sprite back = Sprite::CreateScreen(
+                "hud_bar_fill",
+                barCenter,
+                glm::vec2(
+                    GameConfig::HudAbilityBarWidth,
+                    GameConfig::HudAbilityBarHeight));
+
+            back.tint = GameConfig::HudBarBackTint;
+            back.layer = LayerBack;
+            frameSprites.push_back(back);
+
+            // Left-anchored fill: shrink the quad and re-centre it so it
+            // drains from right to left as the ability runs out, rather
+            // than shrinking from the centre outward.
+            const float fillWidth = GameConfig::HudAbilityBarWidth * fraction;
+
+            Sprite fill = Sprite::CreateScreen(
+                "hud_bar_fill",
+                glm::vec2(
+                    barCenter.x -
+                        GameConfig::HudAbilityBarWidth * 0.5f +
+                        fillWidth * 0.5f,
+                    barCenter.y),
+                glm::vec2(fillWidth, GameConfig::HudAbilityBarHeight));
+
+            fill.tint = GameConfig::HudFilledTint;
+            fill.layer = LayerFill;
+            frameSprites.push_back(fill);
+        }
+    }
+
+    // ---- Current piece icon (bottom-centre) ----
+    {
+        Sprite icon = Sprite::CreateScreen(
+            PieceIconTextureName(pawn->GetCharacter()),
+            glm::vec2(
+                hudScreenWidth * 0.5f,
+                hudScreenHeight - GameConfig::HudMargin -
+                    GameConfig::HudPieceIconSize * 0.5f),
+            glm::vec2(
+                GameConfig::HudPieceIconSize,
+                GameConfig::HudPieceIconSize));
+
+        icon.layer = LayerIcon;
+        frameSprites.push_back(icon);
+    }
+
+    // ---- Interact prompt (centred, above the piece icon) ----
+    if (IsNearInteractable(pawn->GetTransform().GetPosition()))
+    {
+        Sprite prompt = Sprite::CreateScreen(
+            "hud_interact_prompt",
+            glm::vec2(
+                hudScreenWidth * 0.5f,
+                hudScreenHeight - GameConfig::HudMargin -
+                    GameConfig::HudPieceIconSize -
+                    GameConfig::HudInteractPromptGap -
+                    GameConfig::HudInteractPromptSize * 0.5f),
+            glm::vec2(
+                GameConfig::HudInteractPromptSize,
+                GameConfig::HudInteractPromptSize));
+
+        prompt.layer = LayerIcon;
+        frameSprites.push_back(prompt);
+    }
+}
+
+bool Game::IsNearInteractable(const glm::vec3& pawnPosition) const
+{
+    for (const auto& gate : checkpointGates)
+    {
+        if (!gate)
+            continue;
+
+        if (glm::length(pawnPosition - gate->GetGroundPosition()) <=
+            GameConfig::InteractRadius)
+        {
+            return true;
+        }
+    }
+
+    if (kingsCage &&
+        glm::length(pawnPosition - kingsCage->GetGroundPosition()) <=
+            GameConfig::InteractRadius)
+    {
+        return true;
+    }
+
+    return false;
+}
+
 void Game::UpdateCamera()
 {
     if (!camera || !pawn)
@@ -1524,6 +1798,8 @@ bool Game::TryInteractWithCheckpointGate(const glm::vec3& pawnPosition)
 
         if (gate->GetDoorAngle() < CheckpointGate::GetMaxDoorAngle())
             checkpointGateOpening[i] = true;
+
+        checkpointGateActivated[i] = true;
 
         // Reaching a checkpoint at all activates it, even if E only
         // re-opens an already-open gate: a later respawn should return
@@ -1895,6 +2171,7 @@ void Game::Render()
     AppendLightningSprites(frameSprites);
     AppendFireballSprites(frameSprites);
     AppendAbilityPulseSprites(frameSprites);
+    AppendHudSprites(frameSprites);
 
     if (spriteRenderer)
         spriteRenderer->DrawAll(frameSprites);
@@ -1935,6 +2212,9 @@ std::size_t Game::GetSpriteCount() const
 
 void Game::SetViewportSize(float width, float height)
 {
+    hudScreenWidth = width;
+    hudScreenHeight = height;
+
     if (camera)
         camera->SetViewport(width, height);
 
@@ -2031,6 +2311,14 @@ CheckpointGate* Game::GetCheckpointGate()
 const std::vector<std::shared_ptr<CheckpointGate>>& Game::GetCheckpointGates() const
 {
     return checkpointGates;
+}
+
+int Game::GetActivatedCheckpointCount() const
+{
+    return static_cast<int>(std::count(
+        checkpointGateActivated.begin(),
+        checkpointGateActivated.end(),
+        true));
 }
 
 KingsCage* Game::GetKingsCage()

@@ -463,5 +463,57 @@ namespace GameConfig
 
     /// The gap a following sheep tries to keep from the pawn.
     constexpr float SheepFollowDistance = 1.5f;
+
+    //---------------------------------------------------------
+    // Pawn health
+    //---------------------------------------------------------
+
+    /// Pawn's maximum HP. Single source of truth so the HUD's health pips
+    /// and Pawn's own starting health can't drift apart.
+    constexpr float MaxPawnHealth = 5.0f;
+
+    //---------------------------------------------------------
+    // HUD
+    //
+    // Pixel layout for the always-on-screen HUD. All Screen-mode sprites
+    // are positioned by their centre, origin at the window's top-left, so
+    // these are expressed as margins from a corner/edge plus element
+    // sizes -- see Game::AppendHudSprites for how they turn into actual
+    // positions at the current window size.
+    //---------------------------------------------------------
+
+    constexpr float HudMargin = 20.0f;
+
+    /// Health pips (top-left).
+    constexpr float HudHealthPipSize = 28.0f;
+    constexpr float HudHealthPipSpacing = 8.0f;
+
+    /// Checkpoint pips (top-centre).
+    constexpr float HudCheckpointPipSize = 24.0f;
+    constexpr float HudCheckpointPipSpacing = 12.0f;
+
+    /// Ability icon + duration bar (top-right).
+    constexpr float HudAbilityIconSize = 48.0f;
+    constexpr float HudAbilityBarWidth = 64.0f;
+    constexpr float HudAbilityBarHeight = 10.0f;
+    constexpr float HudAbilityBarGap = 8.0f;
+
+    /// Current piece icon (bottom-centre).
+    constexpr float HudPieceIconSize = 56.0f;
+
+    /// Interact prompt (centred, above the current piece icon). Shown only
+    /// while the pawn is within InteractRadius of a checkpoint gate or the
+    /// King's Cage.
+    constexpr float HudInteractPromptSize = 40.0f;
+    constexpr float HudInteractPromptGap = 12.0f;
+
+    /// Shared pip/bar tints, multiplied onto the white placeholder texture.
+    inline const glm::vec3 HudFilledTint = glm::vec3(0.85f, 0.68f, 0.15f);
+    inline const glm::vec3 HudEmptyTint = glm::vec3(0.30f, 0.30f, 0.33f);
+    inline const glm::vec3 HudBarBackTint = glm::vec3(0.15f, 0.15f, 0.18f);
+
+    /// Health pips read better as hearts than gold, so they get their own
+    /// filled tint instead of the shared HudFilledTint.
+    inline const glm::vec3 HudHealthFilledTint = glm::vec3(0.82f, 0.16f, 0.16f);
 }
 

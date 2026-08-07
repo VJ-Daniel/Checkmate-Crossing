@@ -17,6 +17,7 @@
 
 #include "Pawn.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream> // Added for debug output
 
@@ -619,6 +620,34 @@ bool Pawn::IsAbilityActive() const
 PieceType Pawn::GetActiveAbilityType() const
 {
     return activeAbilityType;
+}
+
+float Pawn::GetAbilityDurationFraction() const
+{
+    if (!abilityActive)
+        return 0.0f;
+
+    float maxDuration = 0.0f;
+
+    switch (activeAbilityType)
+    {
+    case PieceType::Knight:
+        maxDuration = GameConfig::KnightAbilityDuration;
+        break;
+    case PieceType::Rook:
+        maxDuration = GameConfig::RookShieldDuration;
+        break;
+    case PieceType::Queen:
+        maxDuration = GameConfig::QueenAbilityDuration;
+        break;
+    default:
+        return 0.0f;
+    }
+
+    if (maxDuration <= 0.0f)
+        return 0.0f;
+
+    return std::clamp(abilityTimeRemaining / maxDuration, 0.0f, 1.0f);
 }
 
 float Pawn::GetSpeedMultiplier() const

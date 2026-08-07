@@ -108,6 +108,14 @@ Sprite Sprite::CreateScreen(
     sprite.size = pixelSize;
     sprite.mode = SpriteRenderMode::Screen;
 
+    // Screen space runs top corner first (local y = 0 is the sprite's top
+    // edge), but a texture's v = 0 is its bottom row (see the flip note on
+    // SpriteRegion::FromPixels). Left uncorrected, every Screen sprite draws
+    // its source image upside down; flipping here once means every caller
+    // of CreateScreen sees their art right-side up without having to think
+    // about it.
+    sprite.flipY = true;
+
     return sprite;
 }
 

@@ -69,6 +69,11 @@ public:
     /// Every checkpoint gate standing on the level, in level order.
     const std::vector<std::shared_ptr<CheckpointGate>>& GetCheckpointGates() const;
 
+    /// How many of the level's checkpoint gates have been reached and
+    /// started opening at least once, 0..GetCheckpointGates().size().
+    /// Drives the HUD's checkpoint pip row.
+    int GetActivatedCheckpointCount() const;
+
     /// Visual-only final objective and the King standing inside it.
     /// Both are null when the level has no King's Cage area.
     KingsCage* GetKingsCage();
@@ -241,6 +246,35 @@ private:
     /// VFX above.
     void AppendAbilityPulseSprites(std::vector<Sprite>& frameSprites) const;
 
+    //---------------------------------------------------------
+    // HUD
+    //
+    // Icon/pip/bar based -- the engine has no text rendering. Sprites are
+    // rebuilt every frame from Pawn/checkpoint state, the same pattern as
+    // the VFX passes above, and drawn last so they land on top.
+    //---------------------------------------------------------
+
+    /// Loads the placeholder HUD textures: the pip/bar squares, the
+    /// universal ability icon, the interact prompt, and one silhouette
+    /// icon per PieceType. Called once from Initialize.
+    void LoadHudSprites();
+
+    /// Adds this frame's HUD: health pips, checkpoint pips, the ability
+    /// icon and its duration bar, the current piece icon, and the interact
+    /// prompt.
+    void AppendHudSprites(std::vector<Sprite>& frameSprites) const;
+
+    /// Texture name registered for one piece's HUD silhouette icon. Used by
+    /// the current-piece indicator.
+    static const std::string& PieceIconTextureName(PieceType type);
+
+    /// True while pawnPosition is within GameConfig::InteractRadius of a
+    /// checkpoint gate or the King's Cage -- read-only mirror of the
+    /// distance checks TryInteractWithCheckpointGate/TryInteractWithKingsCage
+    /// make, so the HUD's interact prompt matches what E actually does
+    /// without duplicating or triggering either one.
+    bool IsNearInteractable(const glm::vec3& pawnPosition) const;
+
     /// Ages every dying prop, shrinking and fading it, and drops the ones
     /// whose reaction has finished.
     void UpdateDyingObstacles(float deltaTime);
@@ -327,6 +361,12 @@ private:
     /// opening and it hasn't reached CheckpointGate::GetMaxDoorAngle() yet.
     std::vector<bool> checkpointGateOpening;
 
+    /// Parallel to checkpointGates: true once that gate has been reached
+    /// and started opening at least once. Unlike checkpointGateOpening
+    /// this is sticky -- set true and never cleared -- so it's what the
+    /// HUD's checkpoint pip row reads.
+    std::vector<bool> checkpointGateActivated;
+
     /// Same idea for the king's cage doors. Both share one opening-angle
     /// magnitude with opposite rotation signs, tracked here rather than on
     /// either individual leaf.
@@ -341,6 +381,13 @@ private:
     /// Sprites drawn after the opaque world, every frame. Empty until sprite
     /// assets exist.
     std::vector<Sprite> sprites;
+
+    /// Cached window size in pixels, kept up to date by SetViewportSize, so
+    /// screen-space HUD math (right/centre-anchored elements) doesn't need
+    /// a separate size parameter threaded through Update/Render.
+    float hudScreenWidth = 1280.0f;
+
+    float hudScreenHeight = 720.0f;
 
     /// Resolves moving hazards and the real stationary level props against
     /// the pawn every frame.

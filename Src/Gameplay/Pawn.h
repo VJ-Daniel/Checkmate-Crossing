@@ -234,6 +234,13 @@ public:
     /// Only meaningful when IsAbilityActive() is true.
     PieceType GetActiveAbilityType() const;
 
+    /// 0 at the moment a timed ability (Knight/Rook/Queen) ends, 1 the
+    /// instant it starts, ticking down in between. 0 whenever
+    /// IsAbilityActive() is false, and 0 for Bishop -- its effect is
+    /// instant, so there is no duration to report. HUD code should treat
+    /// that as "no bar to draw", not as "just finished".
+    float GetAbilityDurationFraction() const;
+
     /// Multiplier currently applied to the pawn's base move speed: 1.0
     /// normally, boosted while Knight or Queen is active. John's animation
     /// blending can also read this to speed up a run cycle, for instance.
