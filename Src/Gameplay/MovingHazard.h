@@ -353,6 +353,12 @@ private:
     /// so a hazard does not visibly swing round on the frame it spawns.
     float facingDegrees = 0.0f;
 
+    /// Nose-up angle, in degrees, taken from the vertical component of
+    /// travel. Zero for anything moving along the ground, which is every
+    /// hazard except a thrown one - so this costs the flat movers nothing
+    /// and needs no per-type branching.
+    float facingPitchDegrees = 0.0f;
+
     bool facingInitialised = false;
 
     bool rollingEnabled = false;

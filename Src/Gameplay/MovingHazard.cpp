@@ -202,6 +202,33 @@ void MovingHazard::UpdateFacing(float deltaTime)
     const float target =
         glm::degrees(std::atan2(-travel.z, travel.x));
 
+    // Pitch, from the same velocity. Yaw alone only ever answers "which way
+    // along the ground", which is all a sweeping arrow needs - but it left a
+    // thrown spear perfectly level for its whole flight, sliding along its
+    // own arc rather than being thrown through it.
+    //
+    // The model matrix composes as Ry * Rx * Rz (see Transform3D), so a Z
+    // rotation is applied to the nose BEFORE the yaw swings it into world
+    // space: it lifts the local +X nose toward +Y while the yaw is still
+    // free to point it anywhere. That is why this belongs in the z slot and
+    // not the x one, and it is also what makes it work from either side
+    // without a per-direction special case - the lift happens in the
+    // spear's own frame, so a spear thrown left pitches up exactly as one
+    // thrown right does.
+    //
+    // Rising gives +y and a nose-up angle, the apex gives y = 0 and level,
+    // falling gives -y and a nose-down angle, all straight out of the
+    // trajectory rather than scripted.
+    const float pitchTarget = glm::degrees(
+        std::atan2(velocity.y, glm::length(travel)));
+
+    // Pitch is taken straight from the trajectory rather than eased toward
+    // like the yaw is. The yaw needs a turn rate because it has to survive a
+    // hazard reversing at the end of a sweep, which is a 180 flip; pitch on
+    // an arc only ever changes smoothly and continuously, so easing it would
+    // just make the spear lag behind the path it is visibly on.
+    facingPitchDegrees = pitchTarget;
+
     if (!facingInitialised)
     {
         facingDegrees = target;
@@ -224,7 +251,10 @@ void MovingHazard::UpdateFacing(float deltaTime)
         facingDegrees += glm::clamp(delta, -maxStep, maxStep);
     }
 
-    visual->GetTransform().SetRotation(0.0f, facingDegrees, 0.0f);
+    visual->GetTransform().SetRotation(
+        0.0f,
+        facingDegrees,
+        facingPitchDegrees);
 }
 
 void MovingHazard::EnableRolling(float radius, RollAxisMode axisMode)
