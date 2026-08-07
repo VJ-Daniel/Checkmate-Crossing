@@ -234,6 +234,10 @@ private:
     /// VFX above.
     void AppendAbilityPulseSprites(std::vector<Sprite>& frameSprites) const;
 
+    /// Ages every dying prop, shrinking and fading it, and drops the ones
+    /// whose reaction has finished.
+    void UpdateDyingObstacles(float deltaTime);
+
     /// One in-flight Bishop/Queen pulse.
     ///
     /// Holds where the ability fired and where each prop it destroyed used
@@ -245,6 +249,24 @@ private:
         glm::vec3 origin = glm::vec3(0.0f);
 
         std::vector<glm::vec3> clearedPositions;
+
+        float elapsed = 0.0f;
+    };
+
+    /// A prop or sheep the ability has destroyed, still playing out its
+    /// reaction.
+    ///
+    /// It has already been taken out of the collision and gameplay lists -
+    /// this list exists only so something visible remains to animate. The
+    /// starting ground position and scale are captured because the shrink
+    /// and the sink are both measured from them.
+    struct DyingObstacle
+    {
+        std::shared_ptr<GroundEntity> visual;
+
+        glm::vec3 startGroundPosition = glm::vec3(0.0f);
+
+        glm::vec3 startScale = glm::vec3(1.0f);
 
         float elapsed = 0.0f;
     };
@@ -323,4 +345,8 @@ private:
     /// Bishop/Queen clearing pulses currently playing. More than one can be
     /// live at a time if the ability is used again before the last finished.
     std::vector<AbilityPulse> abilityPulses;
+
+    /// Props and sheep mid-destruction. Drawn, but no longer part of
+    /// collision or gameplay.
+    std::vector<DyingObstacle> dyingObstacles;
 };

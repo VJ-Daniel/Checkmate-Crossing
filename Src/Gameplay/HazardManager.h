@@ -69,11 +69,13 @@ public:
         float duration,
         float arcHeight);
 
-    /// Stationary telegraph-then-strike zone: used for lightning.
+    /// Stationary telegraph-then-strike zone: used for lightning. Expires
+    /// after its strike, so repeated lightning comes from a repeating spawn.
     MovingHazard& SpawnWarningHazard(
         const glm::vec3& groundPosition,
         float warningDuration,
-        float strikeDuration);
+        float strikeDuration,
+        float catchRadius);
 
     /// Stationary, always-dangerous zone that expires after duration.
     /// Used for the fire patch a fireball leaves on impact -- Update()
@@ -118,7 +120,25 @@ public:
         const glm::vec3& origin,
         float radius,
         int maxCount,
-        std::vector<glm::vec3>& clearedPositions);
+        std::vector<glm::vec3>& clearedPositions,
+        std::vector<std::shared_ptr<GroundEntity>>& removedVisuals);
+
+    /// The moving-hazard half of the same ability.
+    ///
+    /// Only hazards IsAbilityClearable(HazardType) accepts are eligible,
+    /// which today means the cow and nothing else - every projectile is
+    /// protected, in flight or not. Without this the cow would be immune
+    /// simply because it happens to be driven by a MovingHazard rather than
+    /// standing in the obstacle list.
+    ///
+    /// Same reporting contract as ClearStationaryObstacles: positions for
+    /// the effect, visuals for the caller to play a death reaction on.
+    int ClearRemovableHazards(
+        const glm::vec3& origin,
+        float radius,
+        int maxCount,
+        std::vector<glm::vec3>& clearedPositions,
+        std::vector<std::shared_ptr<GroundEntity>>& removedVisuals);
 
     /// Registers a hazard-spawning callback that fires once immediately
     /// and then repeats every interval seconds -- this is what actually

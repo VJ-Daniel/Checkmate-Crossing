@@ -661,9 +661,11 @@ void Game::BuildLevelHazards()
             // danger area for too long." The warning phase is the reaction
             // window, and the gaps between zones are the way through.
             //
-            // Three independent zones on one row, all warning and striking
-            // on their own timers -- the collision pass tests each
-            // separately, so simultaneous strikes need nothing special.
+            // Repeating spawns rather than three immortal zones: a strike
+            // now resolves and finishes, so each activation marks its area
+            // afresh. Three independent zones on one row, each running its
+            // own countdown, so simultaneous warnings and strikes need
+            // nothing special from the collision pass.
             const float lightningX[3] =
             {
                 -halfWidth * 0.55f,
@@ -673,10 +675,16 @@ void Game::BuildLevelHazards()
 
             for (float x : lightningX)
             {
-                hazardManager->SpawnWarningHazard(
-                    glm::vec3(x, y, z),
-                    GameConfig::LightningWarningDuration,
-                    GameConfig::LightningStrikeDuration);
+                hazardManager->RegisterRepeatingSpawn(
+                    GameConfig::LightningSpawnInterval,
+                    [this, x, y, z]()
+                    {
+                        hazardManager->SpawnWarningHazard(
+                            glm::vec3(x, y, z),
+                            GameConfig::LightningWarningDuration,
+                            GameConfig::LightningStrikeDuration,
+                            GameConfig::LightningStrikeRadius);
+                    });
             }
         }
 
@@ -777,12 +785,7 @@ void Game::RegisterFireballVolley(
     const glm::vec3 start(startX, surfaceHeight, laneZ);
     const glm::vec3 landing(landingX, surfaceHeight, laneZ);
 
-    // Flight time from distance and speed, so "speed" is a real world-units
-    // per second figure rather than an inverse duration to be tuned blind.
-    const float duration =
-        GameConfig::FireballSpeed > 0.0f
-        ? GameConfig::FireballTravelDistance / GameConfig::FireballSpeed
-        : 1.0f;
+    const float duration = GameConfig::FireballTravelDuration;
 
     hazardManager->RegisterRepeatingSpawn(
         GameConfig::FireballSpawnInterval,
@@ -967,7 +970,7 @@ void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
 
         const glm::vec3 ground = hazard->GetVisual().GetGroundPosition();
 
-        if (!hazard->IsActive())
+        if (hazard->GetLightningPhase() == LightningPhase::Warning)
         {
             const float warningDuration =
                 std::max(hazard->GetWarningDuration(), 0.001f);
@@ -976,26 +979,48 @@ void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
                 0.0f,
                 1.0f);
 
-            // Sized from the strike radius the collision pass actually
-            // tests, so the marker on the ground is the danger area rather
-            // than an approximation of it.
+            // Sized from the catch radius the strike actually tests, so the
+            // marker on the ground is the danger area rather than an
+            // approximation of it: what you see is exactly what you have to
+            // be outside of.
+            const float diameter = hazard->GetCatchRadius() * 2.0f;
+
             Sprite warning = Sprite::CreateGroundDecal(
                 "lightning_warning_circle",
                 ground,
-                glm::vec2(
-                    GameConfig::LightningStrikeRadius * 2.0f,
-                    GameConfig::LightningStrikeRadius * 2.0f));
+                glm::vec2(diameter, diameter));
 
             warning.tint = glm::vec3(1.0f, 0.0f, 0.0f);
 
-            // Brightens as the strike approaches, so the marker reads as a
-            // countdown and not just a decoration.
-            warning.opacity = 0.20f + 0.45f * warningT;
+            // Flashes, and flashes faster as the countdown runs out: a
+            // square wave whose period shortens toward zero. Far harder to
+            // ignore than a marker that simply brightens, which is the
+            // point of a telegraph the player is meant to act on.
+            const float period = std::max(
+                GameConfig::LightningWarningFlashPeriod * (1.0f - warningT * 0.6f),
+                0.05f);
+
+            const float phase = std::fmod(hazard->GetPhaseElapsed(), period);
+
+            const bool bright = phase < period * 0.5f;
+
+            warning.opacity =
+                (bright ? 0.70f : 0.28f) * (0.55f + 0.45f * warningT);
+
             warning.layer = 10;
 
             frameSprites.push_back(warning);
             continue;
         }
+
+        if (hazard->GetLightningPhase() != LightningPhase::Strike)
+            continue;
+
+        // The bolt comes down where the strike resolved: on the player if
+        // they were caught, on the marker's centre if they got clear. Fixed
+        // at that instant by MovingHazard, so it never chases them
+        // afterwards.
+        const glm::vec3 strike = hazard->GetStrikePosition();
 
         const float strikeDuration =
             std::max(hazard->GetStrikeDuration(), 0.001f);
@@ -1004,53 +1029,46 @@ void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
             0.0f,
             1.0f);
 
-        if (t < 0.72f)
-        {
-            const int frame = std::clamp(
-                1 + static_cast<int>((t / 0.72f) * 5.0f),
-                1,
-                5);
+        // The column, anchored at its foot on the strike point and standing
+        // up from there, so it reads as having come down onto that spot
+        // rather than hovering over it.
+        constexpr float BoltHeight = 3.0f;
 
-            Sprite bolt = Sprite::CreateBillboard(
-                NumberedTextureName("lightning_beginning", frame),
-                ground + glm::vec3(0.0f, 1.45f, 0.0f),
-                glm::vec2(1.0f, 3.0f));
+        const int boltFrame = (t < 0.6f)
+            ? std::clamp(1 + static_cast<int>((t / 0.6f) * 5.0f), 1, 5)
+            : std::clamp(1 + static_cast<int>(((t - 0.6f) / 0.4f) * 3.0f), 1, 3);
 
-            bolt.layer = 25;
-            frameSprites.push_back(bolt);
-        }
-        else if (t < 0.9f)
-        {
-            const float endT = (t - 0.72f) / 0.18f;
-            const int frame = std::clamp(
-                1 + static_cast<int>(endT * 3.0f),
-                1,
-                3);
+        Sprite bolt = Sprite::CreateBillboard(
+            NumberedTextureName(
+                t < 0.6f ? "lightning_beginning" : "lightning_end",
+                boltFrame),
+            strike + glm::vec3(0.0f, BoltHeight * 0.5f, 0.0f),
+            glm::vec2(1.0f, BoltHeight));
 
-            Sprite bolt = Sprite::CreateBillboard(
-                NumberedTextureName("lightning_end", frame),
-                ground + glm::vec3(0.0f, 1.45f, 0.0f),
-                glm::vec2(1.0f, 3.0f));
+        // Fades over the tail of the window so it clears rather than
+        // vanishing mid-frame.
+        bolt.opacity = t < 0.75f ? 1.0f : 1.0f - (t - 0.75f) / 0.25f;
+        bolt.layer = 25;
 
-            bolt.layer = 25;
-            frameSprites.push_back(bolt);
-        }
+        frameSprites.push_back(bolt);
 
+        // Impact burst on the ground at the same point.
         const int explosionFrame = std::clamp(
-            1 + static_cast<int>(((std::max(t, 0.9f) - 0.9f) / 0.8f) * 10.0f),
+            1 + static_cast<int>(t * 10.0f),
             1,
             10);
 
         Sprite explosion = Sprite::CreateGroundDecal(
             NumberedTextureName("lightning_explosion", explosionFrame),
-            ground,
-            glm::vec2(12.0f, 12.0f));
+            strike,
+            glm::vec2(
+                hazard->GetCatchRadius() * 2.4f,
+                hazard->GetCatchRadius() * 2.4f));
 
-        explosion.opacity = 0.9f;
+        explosion.opacity = 0.9f * (1.0f - t * 0.4f);
         explosion.layer = 20;
 
-        if (t >= 0.9f)
-            frameSprites.push_back(explosion);
+        frameSprites.push_back(explosion);
     }
 }
 
@@ -1067,11 +1085,13 @@ void Game::AppendFireballSprites(std::vector<Sprite>& frameSprites) const
         const Hazard* hazardVisual =
             dynamic_cast<const Hazard*>(&hazard->GetVisual());
 
-        if (!hazardVisual ||
-            hazardVisual->GetType() != HazardType::Fireball)
-        {
+        if (!hazardVisual)
             continue;
-        }
+
+        const HazardType type = hazardVisual->GetType();
+
+        if (type != HazardType::Fireball && type != HazardType::FloorFire)
+            continue;
 
         const glm::vec3 ground = hazard->GetVisual().GetGroundPosition();
 
@@ -1170,20 +1190,115 @@ void Game::TriggerAbilityClearPulse()
     AbilityPulse pulse;
     pulse.origin = origin;
 
-    // The ability's whole gameplay effect is this one call. It removes only
-    // stationary props (see IsAbilityClearable) and reports where they were,
-    // which is all the effect below needs.
-    HazardManager::ClearStationaryObstacles(
+    // Whatever is destroyed is handed back here so it can play a death
+    // reaction; it is already out of collision and gameplay by then.
+    std::vector<std::shared_ptr<GroundEntity>> removedVisuals;
+
+    // Two lists, one rule. Placed props live in stationaryHazards, while the
+    // sheep is driven by a MovingHazard, so clearing has to reach into both
+    // -- otherwise the sheep would be immune purely because of which
+    // container it happens to sit in.
+    //
+    // Which types either call will accept is decided by IsAbilityClearable,
+    // and that is where projectiles are refused.
+    const int clearedObstacles = HazardManager::ClearStationaryObstacles(
         stationaryHazards,
         origin,
         GameConfig::BishopClearRadius,
         GameConfig::BishopRemovalCount,
-        pulse.clearedPositions);
+        pulse.clearedPositions,
+        removedVisuals);
+
+    // The budget is shared, so a pulse that already used itself up on props
+    // does not also get to take a sheep.
+    const int remaining = GameConfig::BishopRemovalCount - clearedObstacles;
+
+    if (hazardManager && remaining > 0)
+    {
+        hazardManager->ClearRemovableHazards(
+            origin,
+            GameConfig::BishopClearRadius,
+            remaining,
+            pulse.clearedPositions,
+            removedVisuals);
+    }
+
+    for (const auto& visual : removedVisuals)
+    {
+        if (!visual)
+            continue;
+
+        DyingObstacle dying;
+        dying.visual = visual;
+        dying.startGroundPosition = visual->GetGroundPosition();
+        dying.startScale = visual->GetTransform().GetScale();
+
+        // The shadow goes immediately. A shadow under a prop that is
+        // visibly disintegrating reads as a second object left behind.
+        visual->SetShadowVisible(false);
+
+        dyingObstacles.push_back(std::move(dying));
+    }
 
     // Shown even when nothing was in range. A pulse that fires into empty
     // space still tells the player the ability went off and how far it
     // reached, which is more useful than silence that reads as a bug.
     abilityPulses.push_back(std::move(pulse));
+}
+
+void Game::UpdateDyingObstacles(float deltaTime)
+{
+    for (DyingObstacle& dying : dyingObstacles)
+    {
+        dying.elapsed += deltaTime;
+
+        if (!dying.visual)
+            continue;
+
+        const float t = std::clamp(
+            dying.elapsed /
+                std::max(GameConfig::AbilityDeathReactionDuration, 0.001f),
+            0.0f,
+            1.0f);
+
+        // Collapses and sinks at the same time, so it reads as being broken
+        // apart and swallowed rather than simply scaled away.
+        const float scale = glm::mix(
+            1.0f,
+            GameConfig::AbilityDeathEndScale,
+            t);
+
+        dying.visual->GetTransform().SetScale(
+            dying.startScale.x * scale,
+            dying.startScale.y * scale,
+            dying.startScale.z * scale);
+
+        dying.visual->SetGroundPosition(
+            dying.startGroundPosition -
+            glm::vec3(0.0f, GameConfig::AbilityDeathSinkDistance * t, 0.0f));
+
+        // Flashes toward the pulse's colour on the way out, which is what
+        // ties the destruction to the ability that caused it rather than
+        // leaving it looking like the prop failed on its own.
+        const glm::vec4 base = dying.visual->GetColor();
+
+        dying.visual->SetColor(glm::vec4(
+            glm::mix(base.r, 1.0f, t * 0.7f),
+            glm::mix(base.g, 0.85f, t * 0.7f),
+            glm::mix(base.b, 0.35f, t * 0.7f),
+            1.0f - t));
+    }
+
+    dyingObstacles.erase(
+        std::remove_if(
+            dyingObstacles.begin(),
+            dyingObstacles.end(),
+            [](const DyingObstacle& dying)
+            {
+                return !dying.visual ||
+                    dying.elapsed >= GameConfig::AbilityDeathReactionDuration;
+            }),
+        dyingObstacles.end());
 }
 
 void Game::UpdateAbilityPulses(float deltaTime)
@@ -1487,6 +1602,7 @@ void Game::Update(float deltaTime)
         TriggerAbilityClearPulse();
 
     UpdateAbilityPulses(deltaTime);
+    UpdateDyingObstacles(deltaTime);
 
     // E's target isn't decided inside Pawn (see ConsumeInteractPulse) --
     // resolve it here against whatever's actually in the level: the
@@ -1650,6 +1766,15 @@ void Game::Render()
     {
         if (hazard)
             renderer->Draw(*hazard);
+    }
+
+    // Props the Bishop destroyed, still collapsing. Drawn with the rest of
+    // the world because that is what they still are for another moment --
+    // they are simply no longer in anything that can be collided with.
+    for (const DyingObstacle& dying : dyingObstacles)
+    {
+        if (dying.visual)
+            renderer->Draw(*dying.visual);
     }
 
     if (hazardManager)

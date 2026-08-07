@@ -94,13 +94,24 @@ void MovingHazard::SetArcProjectile(
 void MovingHazard::SetWarningThenStrike(
     const glm::vec3& groundPosition,
     float warningDurationValue,
-    float strikeDurationValue)
+    float strikeDurationValue,
+    float catchRadiusValue)
 {
     pattern = HazardMovementPattern::WarningThenStrike;
 
     warningDuration = warningDurationValue;
     strikeDuration = strikeDurationValue;
+    catchRadius = catchRadiusValue;
     phaseElapsed = 0.0f;
+
+    lightningPhase = LightningPhase::Warning;
+    caughtTarget = false;
+    strikeHitPending = false;
+
+    // Until the strike resolves, the marker's own centre is the best answer
+    // to "where will this land", and it is the answer used verbatim if the
+    // player gets clear in time.
+    strikePosition = groundPosition;
 
     // Starts in the telegraph phase, not already dangerous.
     active = false;
@@ -236,7 +247,9 @@ void MovingHazard::Update(float deltaTime, const glm::vec3& targetGroundPosition
         break;
 
     case HazardMovementPattern::WarningThenStrike:
-        UpdateWarningThenStrike(deltaTime);
+        // Needs the target for the same reason FollowTarget does: it has to
+        // know where the player is at the instant the countdown ends.
+        UpdateWarningThenStrike(deltaTime, targetGroundPosition);
         break;
 
     case HazardMovementPattern::TemporaryZone:
@@ -343,43 +356,72 @@ void MovingHazard::UpdateArcProjectile(float deltaTime)
         expired = true;
 }
 
-void MovingHazard::UpdateWarningThenStrike(float deltaTime)
+void MovingHazard::UpdateWarningThenStrike(
+    float deltaTime,
+    const glm::vec3& targetGroundPosition)
 {
+    if (lightningPhase == LightningPhase::Finished)
+        return;
+
     phaseElapsed += deltaTime;
     velocity = glm::vec3(0.0f);
 
-    // Telegraph dim, strike bright.
-    //
-    // The object colour multiplies the mesh's own vertex tints, so one model
-    // reads as both phases without a second mesh or a visibility toggle -
-    // and the player can tell at a glance whether standing there is merely
-    // unwise or currently lethal, which is the whole point of a hazard that
-    // announces itself before it fires.
-    if (visual)
+    if (lightningPhase == LightningPhase::Warning)
     {
-        visual->SetColor(active
-            ? glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
-            : glm::vec4(0.42f, 0.46f, 0.58f, 1.0f));
+        if (phaseElapsed < warningDuration)
+            return;
+
+        // The countdown has just hit zero. Everything about this strike is
+        // decided here, in this one frame, and never revisited:
+        //
+        //   - was the player inside the marked area?
+        //   - if so, exactly where were they standing?
+        //
+        // Sampling once is what makes the rule honest in both directions.
+        // A player who left in time cannot be dragged back by a bolt that
+        // re-checks later, and a player who stayed cannot dodge it by
+        // sprinting out during the strike animation.
+        const glm::vec3 offset = targetGroundPosition - groundPositionOfVisual();
+
+        const float distance = glm::length(
+            glm::vec3(offset.x, 0.0f, offset.z));
+
+        caughtTarget = distance <= catchRadius;
+
+        // Caught: the bolt comes down on them, wherever that was. Escaped:
+        // it falls on the marker, harmlessly, so the telegraph still pays
+        // off visually instead of just evaporating.
+        strikePosition = caughtTarget
+            ? targetGroundPosition
+            : groundPositionOfVisual();
+
+        strikeHitPending = caughtTarget;
+
+        lightningPhase = LightningPhase::Strike;
+        phaseElapsed = 0.0f;
+
+        // Only a strike that actually caught someone is dangerous. A missed
+        // strike stays inactive so no collision pass can find damage in it.
+        active = caughtTarget;
+
+        return;
     }
 
-    if (active)
+    // Striking. The visual plays out for its full window either way; only
+    // the damage was conditional.
+    if (phaseElapsed >= strikeDuration)
     {
-        // Currently striking; check whether the strike window is over.
-        if (phaseElapsed >= strikeDuration)
-        {
-            active = false;
-            phaseElapsed = 0.0f;
-        }
+        lightningPhase = LightningPhase::Finished;
+        active = false;
+        expired = true;
     }
-    else
-    {
-        // Currently telegraphing; check whether it's time to strike.
-        if (phaseElapsed >= warningDuration)
-        {
-            active = true;
-            phaseElapsed = 0.0f;
-        }
-    }
+}
+
+const glm::vec3& MovingHazard::groundPositionOfVisual() const
+{
+    static const glm::vec3 origin = glm::vec3(0.0f);
+
+    return visual ? visual->GetGroundPosition() : origin;
 }
 
 void MovingHazard::UpdateTemporaryZone(float deltaTime)
@@ -475,6 +517,11 @@ const GroundEntity& MovingHazard::GetVisual() const
     return *visual;
 }
 
+const std::shared_ptr<GroundEntity>& MovingHazard::GetVisualShared() const
+{
+    return visual;
+}
+
 const glm::vec3& MovingHazard::GetVelocity() const
 {
     return velocity;
@@ -518,6 +565,35 @@ float MovingHazard::GetCurveElapsed() const
 float MovingHazard::GetCurveDuration() const
 {
     return curveDuration;
+}
+
+LightningPhase MovingHazard::GetLightningPhase() const
+{
+    return lightningPhase;
+}
+
+float MovingHazard::GetCatchRadius() const
+{
+    return catchRadius;
+}
+
+const glm::vec3& MovingHazard::GetStrikePosition() const
+{
+    return strikePosition;
+}
+
+bool MovingHazard::DidCatchTarget() const
+{
+    return caughtTarget;
+}
+
+bool MovingHazard::ConsumeStrikeHit()
+{
+    if (!strikeHitPending)
+        return false;
+
+    strikeHitPending = false;
+    return true;
 }
 
 float MovingHazard::GetArcElapsed() const

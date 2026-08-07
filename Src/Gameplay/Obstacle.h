@@ -34,13 +34,23 @@ enum class HazardType
     RollingRock,
     RollingLog,
     Fireball,
+
+    /// The burning patch a fireball leaves where it landed.
+    ///
+    /// Its own type rather than "a Fireball that stopped moving": the
+    /// projectile and the fire it creates are two different hazards with
+    /// different lifetimes, different damage rules and different visuals,
+    /// and telling them apart by movement pattern meant every system that
+    /// touched either had to re-derive which one it was looking at.
+    FloorFire,
+
     Lightning,
-    Cow      
+    Cow
 };
 
 constexpr int ObstacleTypeCount = 9;
 
-constexpr int HazardTypeCount = 8; // Updated from 7 to 8
+constexpr int HazardTypeCount = 9;
 
 ObstacleType ObstacleTypeFromIndex(int index);
 
@@ -53,18 +63,26 @@ const char* GetHazardTypeName(HazardType type);
 /// Whether the Bishop's (and therefore the Queen's) clearing ability may
 /// remove this prop.
 ///
-/// The rule is "stationary only". The ability breaks the battlefield's
-/// furniture apart - barricades, walls, rocks, trees, bushes, spike beds -
-/// and deliberately does nothing to anything in flight or on the move. A
-/// player who banks the Bishop is buying a path through the scenery, not a
-/// panic button that deletes the arrow already heading for them.
+/// The rule is "obstacles and livestock, never projectiles". The ability
+/// clears the battlefield's furniture - barricades, walls, rocks, trees,
+/// bushes, spike beds - and the animals wandering among it. What it must
+/// never do is delete something already in flight: a player who banks the
+/// Bishop is buying a path through the scenery, not a panic button that
+/// erases the arrow heading for them.
 ///
-/// Cow is the one exception in this enum, and the reason this predicate
-/// exists rather than being "return true". It sits in ObstacleType only
-/// because that is where its mesh lives; in play it is a moving hazard
-/// driven by a MovingHazard with the FollowTarget pattern, so it falls
-/// under the same protection as every other moving hazard.
+/// Every ObstacleType qualifies, including the cow, which the GDD lists
+/// among the stationary hazards the player has to navigate around even
+/// though it chases. The projectile side of the rule is enforced by the
+/// HazardType overload below, not here.
 bool IsAbilityClearable(ObstacleType type);
+
+/// Whether the ability may remove a hazard of this type.
+///
+/// This is the half of the rule that protects projectiles, and it is
+/// deliberately a whitelist of one: only the cow can be cleared. Arrows,
+/// spears, cannonballs, rolling rocks and logs, fireballs, the fire they
+/// leave and lightning are all off limits, in flight or not.
+bool IsAbilityClearable(HazardType type);
 
 /// Base for a renderable obstacle asset instance, stationary or moving.
 ///

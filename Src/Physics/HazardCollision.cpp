@@ -174,7 +174,7 @@ void HazardCollision::Update(
     CheckStationaryHazards(stationaryHazards);
 
     // Check area hazards (fire patches, lightning strikes)
-    CheckAreaHazards(movingHazards);
+    CheckAreaHazards(movingHazards, deltaTime);
 }
 
 void HazardCollision::CheckMovingHazards(
@@ -396,97 +396,132 @@ void HazardCollision::CheckStationaryHazards(
     }
 }
 
+bool HazardCollision::UpdateFloorFireContact(
+    const MovingHazard& hazard,
+    const glm::vec3& pawnPosition,
+    float deltaTime)
+{
+    // Measured on the ground plane: the patch burns whoever is standing in
+    // it, and a jump does not clear it.
+    const glm::vec3 offset =
+        pawnPosition - hazard.GetVisual().GetGroundPosition();
+
+    const float distance = glm::length(
+        glm::vec3(offset.x, 0.0f, offset.z));
+
+    if (distance >= GameConfig::FloorFireRadius || !hazard.IsActive())
+        return false;
+
+    auto entry = fireContactTimers.find(&hazard);
+
+    // Not in the map means this is the frame the pawn stepped in, so the
+    // first tick is immediate rather than a second late.
+    const bool firstContact = entry == fireContactTimers.end();
+
+    if (firstContact)
+    {
+        entry = fireContactTimers.emplace(&hazard, 0.0f).first;
+    }
+    else
+    {
+        entry->second += deltaTime;
+    }
+
+    if (!firstContact && entry->second < GameConfig::FloorFireDamageInterval)
+        return true;
+
+    entry->second = 0.0f;
+
+    if (pawn->HasShield())
+    {
+        pawn->ConsumeShield();
+    }
+    else if (!pawn->IsImmuneToHazards())
+    {
+        // No knockback: being pushed out of a fire the player walked into
+        // would undo the hazard. The tick rate is this timer's job, not the
+        // shared hit cooldown's -- that cooldown is shorter than a second,
+        // so leaving the pacing to it burned far faster than once a second.
+        ApplyDamage(
+            GameConfig::FloorFireDamage,
+            glm::vec3(0.0f),
+            0.0f);
+    }
+
+    return true;
+}
+
 void HazardCollision::CheckAreaHazards(
-    const std::vector<std::unique_ptr<MovingHazard>>& hazards)
+    const std::vector<std::unique_ptr<MovingHazard>>& hazards,
+    float deltaTime)
 {
     if (!pawn)
         return;
 
-    glm::vec3 pawnPos = pawn->GetTransform().GetPosition();
+    const glm::vec3 pawnPos = pawn->GetTransform().GetPosition();
+
+    // Which fires the pawn is standing in this frame. Anything with a timer
+    // that is not in here has been left, and its timer is dropped below so
+    // walking back in starts the burn from the beginning.
+    std::vector<const MovingHazard*> touchedFires;
 
     for (const auto& hazard : hazards)
     {
         if (!hazard || hazard->HasExpired())
             continue;
 
-        // Check for fire patches
-        if (hazard->GetMovementPattern() == HazardMovementPattern::TemporaryZone)
+        const GroundEntity& visual = hazard->GetVisual();
+        const Hazard* hazardVisual = dynamic_cast<const Hazard*>(&visual);
+
+        if (!hazardVisual)
+            continue;
+
+        // Floor fire: burns once on contact, then once a second while stood
+        // in. Its own type now, so this no longer has to ask which movement
+        // pattern a Fireball happens to be using.
+        if (hazardVisual->GetType() == HazardType::FloorFire)
         {
-            const GroundEntity& visual = hazard->GetVisual();
-            const Hazard* hazardVisual = dynamic_cast<const Hazard*>(&visual);
+            if (UpdateFloorFireContact(*hazard, pawnPos, deltaTime))
+                touchedFires.push_back(hazard.get());
 
-            if (hazardVisual && hazardVisual->GetType() == HazardType::Fireball)
-            {
-                if (hazard->IsActive())
-                {
-                    // Measured on the ground plane: the patch burns whoever
-                    // is standing in it, and a jump does not clear it.
-                    const glm::vec3 offset =
-                        pawnPos - visual.GetGroundPosition();
-
-                    const float distance = glm::length(
-                        glm::vec3(offset.x, 0.0f, offset.z));
-
-                    if (distance < GameConfig::FloorFireRadius)
-                    {
-                        if (pawn->HasShield())
-                        {
-                            pawn->ConsumeShield();
-                        }
-                        else if (!pawn->IsImmuneToHazards())
-                        {
-                            // No knockback: being pushed out of a fire the
-                            // player walked into would undo the hazard.
-                            // The shared cooldown paces the burn into
-                            // ticks rather than a per-frame drain.
-                            ApplyDamage(
-                                GameConfig::FloorFireDamage,
-                                glm::vec3(0.0f),
-                                0.0f);
-                        }
-                    }
-                }
-            }
+            continue;
         }
 
-        // Check for lightning strikes
-        if (hazard->GetMovementPattern() == HazardMovementPattern::WarningThenStrike)
+        // Lightning: the warning phase is harmless, and whether the strike
+        // caught the pawn was settled by MovingHazard at the instant the
+        // countdown ended. Consuming the hit here applies it exactly once,
+        // however many frames the bolt stays on screen.
+        //
+        // Every zone is an independent hazard in this list, so any number of
+        // them can be warning and striking at once.
+        if (hazardVisual->GetType() == HazardType::Lightning)
         {
-            const GroundEntity& visual = hazard->GetVisual();
-            const Hazard* hazardVisual = dynamic_cast<const Hazard*>(&visual);
+            if (!hazard->ConsumeStrikeHit())
+                continue;
 
-            // IsActive() is false for the whole warning phase and true only
-            // once the bolt actually lands, so this tests the pawn's position
-            // at strike time. Leaving the marked area before then means the
-            // test simply never sees the pawn - which is the "no damage if
-            // you moved" rule, with no extra bookkeeping.
-            //
-            // Every lightning zone is an independent hazard in this list, so
-            // any number of them can be warning and striking at once.
-            if (hazardVisual && hazardVisual->GetType() == HazardType::Lightning && hazard->IsActive())
+            if (pawn->HasShield())
             {
-                const glm::vec3 offset =
-                    pawnPos - visual.GetGroundPosition();
-
-                const float distance = glm::length(
-                    glm::vec3(offset.x, 0.0f, offset.z));
-
-                if (distance < GameConfig::LightningStrikeRadius)
-                {
-                    if (pawn->HasShield())
-                    {
-                        pawn->ConsumeShield();
-                    }
-                    else if (!pawn->IsImmuneToHazards())
-                    {
-                        ApplyDamage(
-                            GameConfig::LightningDamage,
-                            glm::vec3(0.0f, 1.0f, 0.0f),
-                            GameConfig::LightningKnockback);
-                    }
-                }
+                pawn->ConsumeShield();
+            }
+            else if (!pawn->IsImmuneToHazards())
+            {
+                ApplyDamage(
+                    GameConfig::LightningDamage,
+                    glm::vec3(0.0f, 1.0f, 0.0f),
+                    GameConfig::LightningKnockback);
             }
         }
+    }
+
+    // Retire the timers of every fire the pawn is no longer in, including
+    // any that expired out from under them.
+    for (auto it = fireContactTimers.begin(); it != fireContactTimers.end(); )
+    {
+        const bool stillTouching =
+            std::find(touchedFires.begin(), touchedFires.end(), it->first) !=
+            touchedFires.end();
+
+        it = stillTouching ? std::next(it) : fireContactTimers.erase(it);
     }
 }
 

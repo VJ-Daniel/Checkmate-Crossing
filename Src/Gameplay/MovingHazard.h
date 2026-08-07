@@ -62,6 +62,25 @@ enum class HazardMovementPattern
     FollowTarget
 };
 
+/// Which stage of its life a WarningThenStrike hazard is in.
+///
+/// Only lightning uses this. The pattern used to cycle warning and strike
+/// forever, which meant it had no moment of resolution to hang a decision on
+/// - and the whole point of lightning is that one instant when the countdown
+/// hits zero and the player either got clear or did not.
+enum class LightningPhase
+{
+    /// Telegraphing. The marker is on the ground and nothing is dangerous.
+    Warning,
+
+    /// The bolt is down. Whether it caught anyone was decided at the moment
+    /// this phase began, not continuously.
+    Strike,
+
+    /// Done. The hazard has expired and its owner should drop it.
+    Finished
+};
+
 /// Moves one hazard's visual according to its configured pattern.
 class MovingHazard
 {
@@ -103,12 +122,25 @@ public:
         float duration,
         float arcHeight);
 
-    /// Stays at groundPosition. Cycles a warning phase (not active) and a
-    /// strike phase (active) forever; never expires on its own.
+    /// Stays at groundPosition and telegraphs for warningDuration, then
+    /// strikes for strikeDuration and expires.
+    ///
+    /// catchRadius is the marked area. At the instant the warning ends, the
+    /// target passed to Update is tested against it once: inside means the
+    /// strike lands on the target's position at that moment and DidCatchTarget
+    /// reports true; outside means the strike falls harmlessly on the marker's
+    /// own centre and nothing is damaged. Moving away afterwards cannot undo
+    /// a hit, and staying still afterwards cannot cause one - the decision
+    /// belongs to that single frame.
+    ///
+    /// This used to loop warning and strike forever. It now finishes, so
+    /// repeated lightning comes from a repeating spawn like every other
+    /// hazard rather than from one immortal object.
     void SetWarningThenStrike(
         const glm::vec3& groundPosition,
         float warningDuration,
-        float strikeDuration);
+        float strikeDuration,
+        float catchRadius);
 
     /// Stays at groundPosition and is active for duration, then expires.
     /// Used for the fireball's residual fire patch.
@@ -158,6 +190,11 @@ public:
 
     const GroundEntity& GetVisual() const;
 
+    /// Shared ownership of the visual, for the rare caller that needs it to
+    /// outlive the hazard - a removed cow still has a death animation to
+    /// finish after this object is gone.
+    const std::shared_ptr<GroundEntity>& GetVisualShared() const;
+
     /// World-space velocity this frame. Zero while a WarningThenStrike
     /// hazard is standing still (which is always, for that pattern).
     const glm::vec3& GetVelocity() const;
@@ -181,6 +218,37 @@ public:
     float GetWarningDuration() const;
 
     float GetStrikeDuration() const;
+
+    //-----------------------------------------------------------
+    // Lightning resolution
+    //
+    // All four are only meaningful for WarningThenStrike.
+    //-----------------------------------------------------------
+
+    LightningPhase GetLightningPhase() const;
+
+    /// Radius of the marked area.
+    float GetCatchRadius() const;
+
+    /// Where the bolt actually comes down: the target's position at the
+    /// instant the countdown hit zero if it was caught, otherwise the
+    /// marker's own centre.
+    ///
+    /// Fixed once the strike begins. The effect must not follow the target
+    /// after the fact, so this deliberately stops tracking.
+    const glm::vec3& GetStrikePosition() const;
+
+    /// Whether the strike caught the target. False for the whole warning
+    /// phase, and false forever after a strike that missed.
+    bool DidCatchTarget() const;
+
+    /// True exactly once, on the frame a strike lands on the target.
+    ///
+    /// Consumed rather than polled so damage is applied a single time no
+    /// matter how many frames the strike visual lasts, which is what keeps
+    /// one bolt to one hit without the collision system tracking that
+    /// itself.
+    bool ConsumeStrikeHit();
 
     /// Progress for curved projectiles such as spears.
     float GetCurveElapsed() const;
@@ -207,13 +275,19 @@ private:
 
     void UpdateArcProjectile(float deltaTime);
 
-    void UpdateWarningThenStrike(float deltaTime);
+    void UpdateWarningThenStrike(
+        float deltaTime,
+        const glm::vec3& targetGroundPosition);
 
     void UpdateTemporaryZone(float deltaTime);
 
     void UpdateFollowTarget(float deltaTime, const glm::vec3& targetGroundPosition);
 
     void MoveVisualTo(const glm::vec3& groundPosition);
+
+    /// The visual's ground position, or the origin if it has none. Saves
+    /// repeating the null check inside the strike resolution.
+    const glm::vec3& groundPositionOfVisual() const;
 
     std::shared_ptr<GroundEntity> visual;
 
@@ -275,6 +349,16 @@ private:
     float warningDuration = 1.0f;
     float strikeDuration = 1.0f;
     float phaseElapsed = 0.0f;
+
+    LightningPhase lightningPhase = LightningPhase::Warning;
+
+    float catchRadius = 1.0f;
+
+    glm::vec3 strikePosition = glm::vec3(0.0f);
+
+    bool caughtTarget = false;
+
+    bool strikeHitPending = false;
 
     // --- TemporaryZone ---
 

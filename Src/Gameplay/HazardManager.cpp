@@ -87,12 +87,14 @@ MovingHazard& HazardManager::SpawnArcHazard(
 MovingHazard& HazardManager::SpawnWarningHazard(
     const glm::vec3& groundPosition,
     float warningDuration,
-    float strikeDuration)
+    float strikeDuration,
+    float catchRadius)
 {
     auto visual = meshLibrary.CreateHazard(HazardType::Lightning);
 
     auto hazard = std::make_unique<MovingHazard>(visual);
-    hazard->SetWarningThenStrike(groundPosition, warningDuration, strikeDuration);
+    hazard->SetWarningThenStrike(
+        groundPosition, warningDuration, strikeDuration, catchRadius);
 
     hazards.push_back(std::move(hazard));
 
@@ -134,7 +136,8 @@ int HazardManager::ClearStationaryObstacles(
     const glm::vec3& origin,
     float radius,
     int maxCount,
-    std::vector<glm::vec3>& clearedPositions)
+    std::vector<glm::vec3>& clearedPositions,
+    std::vector<std::shared_ptr<GroundEntity>>& removedVisuals)
 {
     if (maxCount <= 0 || radius <= 0.0f)
         return 0;
@@ -192,6 +195,12 @@ int HazardManager::ClearStationaryObstacles(
         const std::size_t index = candidates[slot].index;
 
         clearedPositions.push_back(obstacles[index]->GetGroundPosition());
+
+        // Handed on rather than dropped: the prop is out of the collision
+        // and render lists immediately, but the caller keeps it alive long
+        // enough to play its death reaction.
+        removedVisuals.push_back(obstacles[index]);
+
         toRemove.push_back(index);
     }
 
@@ -201,6 +210,89 @@ int HazardManager::ClearStationaryObstacles(
 
     for (std::size_t index : toRemove)
         obstacles.erase(obstacles.begin() + static_cast<std::ptrdiff_t>(index));
+
+    return removeCount;
+}
+
+int HazardManager::ClearRemovableHazards(
+    const glm::vec3& origin,
+    float radius,
+    int maxCount,
+    std::vector<glm::vec3>& clearedPositions,
+    std::vector<std::shared_ptr<GroundEntity>>& removedVisuals)
+{
+    if (maxCount <= 0 || radius <= 0.0f)
+        return 0;
+
+    struct Candidate
+    {
+        std::size_t index = 0;
+        float distance = 0.0f;
+    };
+
+    std::vector<Candidate> candidates;
+
+    for (std::size_t index = 0; index < hazards.size(); ++index)
+    {
+        const auto& hazard = hazards[index];
+
+        if (!hazard || hazard->HasExpired())
+            continue;
+
+        const GroundEntity& visual = hazard->GetVisual();
+
+        // The cow is spawned from the stationary-prop mesh, so it arrives as
+        // a StaticObstacle; a hazard-typed one is checked too so this keeps
+        // working if it is ever rebuilt as a proper Hazard.
+        bool clearable = false;
+
+        if (const auto* obstacle = dynamic_cast<const StaticObstacle*>(&visual))
+            clearable = IsAbilityClearable(obstacle->GetType());
+        else if (const auto* typed = dynamic_cast<const Hazard*>(&visual))
+            clearable = IsAbilityClearable(typed->GetType());
+
+        if (!clearable)
+            continue;
+
+        const glm::vec3 offset = visual.GetGroundPosition() - origin;
+
+        const float distance = glm::length(
+            glm::vec3(offset.x, 0.0f, offset.z));
+
+        if (distance <= radius)
+            candidates.push_back({ index, distance });
+    }
+
+    std::sort(
+        candidates.begin(),
+        candidates.end(),
+        [](const Candidate& a, const Candidate& b)
+        {
+            return a.distance < b.distance;
+        });
+
+    const int removeCount = std::min(
+        maxCount, static_cast<int>(candidates.size()));
+
+    std::vector<std::size_t> toRemove;
+    toRemove.reserve(static_cast<std::size_t>(removeCount));
+
+    for (int slot = 0; slot < removeCount; ++slot)
+    {
+        const std::size_t index = candidates[slot].index;
+
+        clearedPositions.push_back(
+            hazards[index]->GetVisual().GetGroundPosition());
+
+        removedVisuals.push_back(hazards[index]->GetVisualShared());
+
+        toRemove.push_back(index);
+    }
+
+    std::sort(toRemove.rbegin(), toRemove.rend());
+
+    for (std::size_t index : toRemove)
+        hazards.erase(hazards.begin() + static_cast<std::ptrdiff_t>(index));
 
     return removeCount;
 }
@@ -255,17 +347,12 @@ void HazardManager::Update(float deltaTime, const glm::vec3& pawnGroundPosition)
 
         const auto* fireball = dynamic_cast<const Hazard*>(&hazard->GetVisual());
 
-        // Any fireball that finished a flight leaves a patch. Tested by "not
-        // already a patch" rather than by naming the flight pattern, so
-        // retuning the trajectory cannot silently switch the fire off - which
-        // is exactly what would have happened when the arc replaced the old
-        // sideways sweep.
-        if (fireball &&
-            fireball->GetType() == HazardType::Fireball &&
-            hazard->GetMovementPattern() != HazardMovementPattern::TemporaryZone)
-        {
+        // A fireball that finished its flight has landed. The projectile
+        // dies here and a separate FloorFire hazard takes over at the impact
+        // point -- two objects with two lifetimes, rather than one pretending
+        // to be both.
+        if (fireball && fireball->GetType() == HazardType::Fireball)
             burnPositions.push_back(hazard->GetVisual().GetGroundPosition());
-        }
     }
 
     hazards.erase(
@@ -281,7 +368,7 @@ void HazardManager::Update(float deltaTime, const glm::vec3& pawnGroundPosition)
     for (const glm::vec3& position : burnPositions)
     {
         SpawnTemporaryZone(
-            HazardType::Fireball, position, GameConfig::FireballBurnDuration);
+            HazardType::FloorFire, position, GameConfig::FireballBurnDuration);
     }
 }
 

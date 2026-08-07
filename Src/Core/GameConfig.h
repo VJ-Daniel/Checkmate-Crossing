@@ -279,6 +279,21 @@ namespace GameConfig
     /// Size of the burst drawn over each cleared obstacle.
     constexpr float AbilityClearBurstSize = 1.6f;
 
+    /// How long a cleared obstacle or sheep keeps reacting before it is
+    /// gone for good.
+    ///
+    /// It stops colliding the instant the ability fires, so the path opens
+    /// immediately; this is purely the beat in which it shrinks and fades,
+    /// which is what makes it read as "the Bishop destroyed that" rather
+    /// than as scenery blinking out.
+    constexpr float AbilityDeathReactionDuration = 0.45f;
+
+    /// How far the dying prop shrinks by the end of its reaction, and how
+    /// far it sinks into the ground as it goes.
+    constexpr float AbilityDeathEndScale = 0.15f;
+
+    constexpr float AbilityDeathSinkDistance = 0.35f;
+
     //---------------------------------------------------------
     // Fireball (GDD section 2)
     //
@@ -288,9 +303,13 @@ namespace GameConfig
     // physics engine involved.
     //---------------------------------------------------------
 
-    /// Horizontal travel speed, in world units per second. The flight time
-    /// is derived from this and FireballTravelDistance.
-    constexpr float FireballSpeed = 5.0f;
+    /// How long one fireball is in the air, start to impact.
+    ///
+    /// The exposed knob, rather than a speed: the arc is interpolated over
+    /// normalised time, so duration is what the trajectory actually reads.
+    /// Effective speed is FireballTravelDistance / this -- currently about
+    /// 5 world units per second.
+    constexpr float FireballTravelDuration = 1.4f;
 
     /// Peak height of the arc above the lane surface, at the midpoint.
     constexpr float FireballArcHeight = 2.4f;
@@ -327,10 +346,16 @@ namespace GameConfig
     /// How far from the patch centre the fire burns.
     constexpr float FloorFireRadius = 0.6f;
 
-    /// Damage per application while standing in it. Applied through the
-    /// shared damage cooldown, so this is a tick rather than a per-frame
-    /// drain.
+    /// Damage per tick while standing in it.
     constexpr float FloorFireDamage = 0.5f;
+
+    /// Seconds between burn ticks.
+    ///
+    /// The pawn is burned the moment it steps in and then every interval it
+    /// stays, with the count restarting from scratch if it leaves and comes
+    /// back. Deliberately independent of DamageCooldown, which is shorter
+    /// and would otherwise set the burn rate.
+    constexpr float FloorFireDamageInterval = 1.0f;
 
     /// On-screen size of the camera-facing flame billboard.
     constexpr float FloorFireSpriteSize = 2.2f;
@@ -346,15 +371,25 @@ namespace GameConfig
     /// How long the ground marker shows before the bolt lands. This is the
     /// player's whole reaction window, so it is the first number to raise
     /// if the strike feels unfair.
-    constexpr float LightningWarningDuration = 1.5f;
+    constexpr float LightningWarningDuration = 2.0f;
 
-    /// How long the strike itself lasts. Damage is tested throughout, but
-    /// the shared cooldown means one strike lands one hit.
-    constexpr float LightningStrikeDuration = 1.0f;
+    /// How long the bolt stays on screen after it lands. Damage is applied
+    /// once, at the start of this window, not across it.
+    constexpr float LightningStrikeDuration = 0.6f;
 
-    /// Radius of the marked area, used for both the damage test and the
-    /// warning decal, so what is drawn is exactly what is dangerous.
-    constexpr float LightningStrikeRadius = 1.1f;
+    /// Radius of the marked area. Used for the escape test, the damage and
+    /// the warning decal alike, so what is drawn is exactly what is
+    /// dangerous and exactly what has to be left to be safe.
+    constexpr float LightningStrikeRadius = 1.4f;
+
+    /// How often a lightning zone re-arms. Each activation marks its area,
+    /// counts down, strikes and finishes, so this is the gap between one
+    /// finishing and the next appearing.
+    constexpr float LightningSpawnInterval = 4.0f;
+
+    /// How long the warning marker takes to complete one flash cycle. Short
+    /// enough to read as urgent rather than as a slow pulse.
+    constexpr float LightningWarningFlashPeriod = 0.32f;
 
     constexpr float LightningDamage = 1.0f;
 
