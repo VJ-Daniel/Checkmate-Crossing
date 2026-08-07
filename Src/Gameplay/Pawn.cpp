@@ -197,59 +197,37 @@ void Pawn::HandleInput()
     // running while the pawn is held against a wall.
     movementInputActive = glm::length(direction) > 0.0f;
 
-    // Knockback overrides input while it lasts, so a hit actually pushes the
-    // pawn instead of being cancelled by whatever key is held.
+    // Knockback overrides input while it lasts.
     if (knockbackTimer <= 0.0f)
     {
         velocity = direction * moveSpeed * GetSpeedMultiplier();
     }
     else
     {
-        // Bleed the bounce off smoothly rather than stopping dead.
         velocity *= 0.95f;
-
-        if (glm::length(velocity) < 0.01f)
-            velocity = glm::vec3(0.0f);
+        if (glm::length(velocity) < 0.01f) velocity = glm::vec3(0.0f);
     }
 
     if (glm::length(direction) > 0.0f && knockbackTimer <= 0.0f)
     {
-        // Y-heading toward the movement direction.
-        //
-        // Every piece model is authored facing +Z (see PieceMeshFactory),
-        // and a Y rotation of theta carries +Z round to
-        // (sin theta, 0, cos theta). Pointing that at the travel direction
-        // is therefore atan2(x, z), with no negation on either term.
-        //
-        // The negated Z is the orientation bug that was fixed after Kaung
-        // branched: it inverted forward against backward while leaving left
-        // and right correct.
-        const float headingDegrees =
-            glm::degrees(std::atan2(direction.x, direction.z));
-
+        const float headingDegrees = glm::degrees(std::atan2(direction.x, direction.z));
         transform.SetRotation(0.0f, headingDegrees, 0.0f);
     }
 
-    // Space jumps. Kaung's branch had repurposed it to fire abilities,
-    // because it predates the jump landing on the shared branch - but E
-    // already resolves abilities (see ConsumeInteractPulse), and removing
-    // the jump would take Ayub's movement and the jump animations with it.
+    // SPACE: Jump
     const bool spaceDown = Input::IsKeyPressed(Key::Space);
-
     if (spaceDown && !spaceKeyWasDown)
         TryJump();
-
     spaceKeyWasDown = spaceDown;
 
-    // E is the interact button. What it actually does -- open a nearby
-    // door/gate, or fall back to activating a stored ability -- depends on
-    // the wider level, which this class has no reference to. It just
-    // reports the press; see the class comment on ConsumeInteractPulse().
+    // E: Interact OR Activate Banked Ability
+    // We set a pulse here. Game.cpp will check for doors/gates first.
+    // If you're not near a door/gate, Game.cpp falls back to TryActivateAbility().
     const bool interactDown = Input::IsKeyPressed(Key::E);
-
     if (interactDown && !interactKeyWasDown)
+    {
         interactPulsePending = true;
-
+    }
     interactKeyWasDown = interactDown;
 }
 
@@ -295,6 +273,7 @@ bool Pawn::GetCharacterAbility(
     case PieceType::Bishop:
     case PieceType::Rook:
     case PieceType::Queen:
+    case PieceType::Knight:
         abilityType = character;
         return true;
 
@@ -325,9 +304,6 @@ void Pawn::SetCharacter(
     PieceType newCharacter,
     PieceMeshLibrary& meshLibrary)
 {
-    // The riderless horse is a collectible, not a body the player wears.
-    if (newCharacter == PieceType::Knight)
-        return;
 
     const PieceMeshFactory::PieceRigModel& rigModel =
         meshLibrary.GetRigModel(newCharacter);
@@ -373,7 +349,10 @@ void Pawn::SetCharacter(
     PieceType ability = PieceType::Bishop;
 
     if (GetCharacterAbility(newCharacter, ability))
-        CollectPiece(ability);
+    {
+        hasStoredPiece = true;
+        storedPieceType = ability;
+    }
 
     UpdateShadow();
     UpdateAnimation(0.0f);
@@ -392,14 +371,6 @@ const std::vector<std::shared_ptr<SceneNode>>& Pawn::GetRigParts() const
 bool Pawn::IsGrounded() const
 {
     // Straight off the jump state, which is the authority on this.
-    //
-    // Before the jump system landed this had to infer being airborne from
-    // the pawn's height above its lane, because nothing in the project
-    // applied gravity or vertical velocity. Now that something does, the
-    // animation reads that rather than re-deriving it: two answers to "is
-    // the pawn on the ground" is one more than there should be, and the
-    // inferred one needed a tolerance that would have delayed the jump pose
-    // until the pawn was already a couple of centimetres up.
     return !isAirborne;
 }
 
@@ -497,25 +468,10 @@ void Pawn::CollectPiece(PieceType type)
     hasStoredPiece = true;
     storedPieceType = type;
 
-    // =========================================================
-    // THE FIX: SWAP THE MESH TO THE COLLECTED PIECE!
-    // =========================================================
     if (meshLibrary)
     {
-        // Create a temporary chess piece model
-        auto newMesh = meshLibrary->CreatePiece(type, PieceTeam::White);
-
-        // Steal its mesh and apply it to our pawn
-        SetMesh(newMesh->GetMesh());
-
-        // Set the team color of the piece
-        SetColor(newMesh->GetColor());
-
-        // Resize it to fit the pawn's scale
-        float pieceScale = GameConfig::PieceScale;
-        transform.SetScale(pieceScale, pieceScale, pieceScale);
+        SetCharacter(type, *meshLibrary);
     }
-    // =========================================================
 
     std::cout << "Pawn transformed into a " << GetPieceTypeName(type) << "!" << std::endl;
 }
@@ -538,46 +494,44 @@ void Pawn::TryActivateAbility()
     activeAbilityType = storedPieceType;
     hasStoredPiece = false;
 
+    std::cout << ">>> ACTIVATING ABILITY: " << GetPieceTypeName(activeAbilityType) << " <<<" << std::endl;
+
     switch (activeAbilityType)
     {
     case PieceType::Knight:
-
         // Speed boost and hazard immunity for a fixed duration.
         abilityActive = true;
         abilityTimeRemaining = GameConfig::KnightAbilityDuration;
         shieldAvailable = false;
+
+        std::cout << "  Knight: Speed Boost + Immunity Active (" << abilityTimeRemaining << "s)" << std::endl;
         break;
 
     case PieceType::Rook:
-
-        // A single shield charge; ConsumeShield() ends this early once
-        // it actually blocks a hit.
+        // A single shield charge; ConsumeShield() ends this early once it blocks.
         abilityActive = true;
         abilityTimeRemaining = GameConfig::RookShieldDuration;
         shieldAvailable = true;
+        std::cout << "  Rook: Shield Active (Duration: " << abilityTimeRemaining << "s)" << std::endl;
         break;
 
     case PieceType::Queen:
-
-        // Knight's speed/immunity plus Rook's shield together, for a
-        // shorter duration -- the GDD's "combines multiple abilities."
+        // Knight's speed/immunity + Rook's shield + Bishop's pulse.
         abilityActive = true;
         abilityTimeRemaining = GameConfig::QueenAbilityDuration;
         shieldAvailable = true;
+        bishopPulsePending = true;
+        std::cout << "  Queen: Speed + Shield + Pulse Active (" << abilityTimeRemaining << "s)" << std::endl;
         break;
 
     case PieceType::Bishop:
-
-        // Instant effect: no ongoing timer, just a one-shot pulse for
-        // whoever owns HazardManager (currently Game) to react to.
+        // Instant effect: no ongoing timer, just a one-shot pulse.
         abilityActive = false;
         bishopPulsePending = true;
+        std::cout << "  Bishop: Pulse Fired (Removing obstacles...)" << std::endl;
         break;
 
     default:
-
-        // Pawn/King/MountedPawn are never valid collectibles; CollectPiece
-        // already filters these out, so this shouldn't be reachable.
         break;
     }
 }
@@ -632,6 +586,8 @@ bool Pawn::HasShield() const
 
 void Pawn::ConsumeShield()
 {
+    std::cout << "  > SHIELD BLOCKED A HIT! <" << std::endl;
+
     shieldAvailable = false;
 
     // A consumed Rook shield was the entire ability, so it ends outright.
@@ -641,6 +597,7 @@ void Pawn::ConsumeShield()
     {
         abilityActive = false;
         abilityTimeRemaining = 0.0f;
+        std::cout << "  Rook ability expired after blocking hit." << std::endl;
     }
 }
 
