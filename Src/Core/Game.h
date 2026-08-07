@@ -275,6 +275,17 @@ private:
     /// without duplicating or triggering either one.
     bool IsNearInteractable(const glm::vec3& pawnPosition) const;
 
+    //---------------------------------------------------------
+    // Game over
+    //---------------------------------------------------------
+
+    /// Counts a death every time Pawn::ConsumeDeathPulse() reports one.
+    /// GameConfig::MaxDeathsBeforeGameOver deaths trigger a Game Over:
+    /// checkpoint progress clears, the pawn is sent back to the level's
+    /// initial spawn point, and the banner timer starts. Also ages that
+    /// timer down every frame. Called once per Update.
+    void UpdateGameOver(float deltaTime);
+
     /// Ages every dying prop, shrinking and fading it, and drops the ones
     /// whose reaction has finished.
     void UpdateDyingObstacles(float deltaTime);
@@ -388,6 +399,15 @@ private:
     float hudScreenWidth = 1280.0f;
 
     float hudScreenHeight = 720.0f;
+
+    /// Deaths since the last Game Over (or level start). Reset to 0 the
+    /// instant it hits GameConfig::MaxDeathsBeforeGameOver.
+    int deathCount = 0;
+
+    /// Counts down from GameConfig::GameOverBannerDuration once a Game
+    /// Over fires. The reset itself already happened; this only times how
+    /// long the banner stays on screen.
+    float gameOverBannerTimer = 0.0f;
 
     /// Resolves moving hazards and the real stationary level props against
     /// the pawn every frame.

@@ -266,6 +266,13 @@ public:
     /// (currently Game) should check this every frame and act on it.
     bool ConsumeBishopActivationPulse();
 
+    /// True exactly once, on the frame health reaches 0 and TakeDamage()
+    /// triggers a respawn, then clears itself. Counting deaths and acting
+    /// on a game over means touching checkpoint state and the level's
+    /// spawn point, neither of which this class holds a reference to --
+    /// whoever owns both (currently Game) should check this every frame.
+    bool ConsumeDeathPulse();
+
     /// Set the pawn's velocity directly (for knockback from collisions)
     void SetVelocity(const glm::vec3& newVelocity) { velocity = newVelocity; }
 
@@ -397,6 +404,8 @@ private:
     bool shieldAvailable = false;
 
     bool bishopPulsePending = false;
+
+    bool deathPulsePending = false;
 
     float slowMultiplier = 1.0f;
 

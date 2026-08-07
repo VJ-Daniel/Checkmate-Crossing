@@ -473,6 +473,23 @@ namespace GameConfig
     constexpr float MaxPawnHealth = 5.0f;
 
     //---------------------------------------------------------
+    // Game over
+    //
+    // Death already respawns the pawn at its most recent checkpoint (or
+    // the level start, if none yet) -- see Pawn::TakeDamage/Respawn. This
+    // is the harsher reset layered on top: too many deaths sends the
+    // player all the way back to the level's initial spawn point and
+    // clears checkpoint progress, not just the pawn's own position.
+    //---------------------------------------------------------
+
+    constexpr int MaxDeathsBeforeGameOver = 3;
+
+    /// How long the Game Over banner stays on screen. Gameplay is not
+    /// paused during this window -- the reset already happened the instant
+    /// the death count crossed the threshold, this is purely feedback.
+    constexpr float GameOverBannerDuration = 2.0f;
+
+    //---------------------------------------------------------
     // HUD
     //
     // Pixel layout for the always-on-screen HUD. All Screen-mode sprites
@@ -506,6 +523,24 @@ namespace GameConfig
     /// King's Cage.
     constexpr float HudInteractPromptSize = 40.0f;
     constexpr float HudInteractPromptGap = 12.0f;
+
+    /// Game Over banner (screen-centred) and the dimming overlay behind it.
+    /// The banner art is a square ornate frame, so this stays square to
+    /// avoid stretching its border out of proportion.
+    constexpr float HudGameOverBannerSize = 240.0f;
+    inline const glm::vec3 HudGameOverOverlayTint = glm::vec3(0.0f, 0.0f, 0.0f);
+    constexpr float HudGameOverOverlayOpacity = 0.55f;
+
+    /// Tints the (currently white) frame art a somber red for the "defeat"
+    /// mood without baking a color into the source asset.
+    inline const glm::vec3 HudGameOverBannerTint = glm::vec3(0.75f, 0.20f, 0.20f);
+
+    /// "GAME OVER" text, rendered once offline (MedievalSharp, gold fill,
+    /// dark stroke) rather than tinted -- it needs to stay legible on top
+    /// of the red frame, not share its color. Sized to match the source
+    /// PNG's ~4.4:1 aspect so it doesn't stretch.
+    constexpr float HudGameOverTextWidth = 200.0f;
+    constexpr float HudGameOverTextHeight = 46.0f;
 
     /// Shared pip/bar tints, multiplied onto the white placeholder texture.
     inline const glm::vec3 HudFilledTint = glm::vec3(0.85f, 0.68f, 0.15f);

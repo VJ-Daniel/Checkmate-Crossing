@@ -1040,6 +1040,20 @@ void Game::LoadHudSprites()
         "hud_interact_prompt",
         "Src/Assets/Sprites/UI/hud_interact_prompt.png");
 
+    // Game Over banner frame, shown briefly after the 3rd death. Tinted at
+    // draw time (GameConfig::HudGameOverBannerTint) rather than baked red,
+    // so the source art stays a neutral, reusable frame.
+    ResourceManager::LoadTexture(
+        "hud_game_over",
+        "Src/Assets/Sprites/UI/hud_game_over.png");
+
+    // "GAME OVER" text, drawn on top of the frame above. Pre-rendered with
+    // its own baked color (gold fill, dark stroke), not tinted, so it stays
+    // legible regardless of the frame's tint.
+    ResourceManager::LoadTexture(
+        "hud_game_over_text",
+        "Src/Assets/Sprites/UI/hud_game_over_text.png");
+
     // One silhouette per PieceType, used by the current-piece indicator.
     for (int i = 0; i < PieceTypeCount; ++i)
     {
@@ -1679,6 +1693,47 @@ void Game::AppendHudSprites(std::vector<Sprite>& frameSprites) const
         prompt.layer = LayerIcon;
         frameSprites.push_back(prompt);
     }
+
+    // ---- Game Over banner (screen-centred, on top of everything) ----
+    if (gameOverBannerTimer > 0.0f)
+    {
+        constexpr int LayerGameOverOverlay = 210;
+        constexpr int LayerGameOverBanner = 211;
+        constexpr int LayerGameOverText = 212;
+
+        // Dim the world behind the banner so it reads clearly against
+        // whatever's on screen underneath.
+        Sprite overlay = Sprite::CreateScreen(
+            "hud_bar_fill",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(hudScreenWidth, hudScreenHeight));
+
+        overlay.tint = GameConfig::HudGameOverOverlayTint;
+        overlay.opacity = GameConfig::HudGameOverOverlayOpacity;
+        overlay.layer = LayerGameOverOverlay;
+        frameSprites.push_back(overlay);
+
+        Sprite banner = Sprite::CreateScreen(
+            "hud_game_over",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(
+                GameConfig::HudGameOverBannerSize,
+                GameConfig::HudGameOverBannerSize));
+
+        banner.tint = GameConfig::HudGameOverBannerTint;
+        banner.layer = LayerGameOverBanner;
+        frameSprites.push_back(banner);
+
+        Sprite text = Sprite::CreateScreen(
+            "hud_game_over_text",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(
+                GameConfig::HudGameOverTextWidth,
+                GameConfig::HudGameOverTextHeight));
+
+        text.layer = LayerGameOverText;
+        frameSprites.push_back(text);
+    }
 }
 
 bool Game::IsNearInteractable(const glm::vec3& pawnPosition) const
@@ -1880,6 +1935,38 @@ void Game::UpdateDoors(float deltaTime)
     }
 }
 
+void Game::UpdateGameOver(float deltaTime)
+{
+    if (gameOverBannerTimer > 0.0f)
+        gameOverBannerTimer = std::max(0.0f, gameOverBannerTimer - deltaTime);
+
+    if (!pawn || !pawn->ConsumeDeathPulse())
+        return;
+
+    ++deathCount;
+
+    if (deathCount < GameConfig::MaxDeathsBeforeGameOver)
+        return;
+
+    // Game Over: harsher than a normal death. Clear checkpoint progress and
+    // send the pawn all the way back to the level's initial spawn point,
+    // not whichever checkpoint it had most recently banked -- otherwise the
+    // very next death would undo this reset immediately.
+    deathCount = 0;
+    gameOverBannerTimer = GameConfig::GameOverBannerDuration;
+
+    std::fill(
+        checkpointGateActivated.begin(),
+        checkpointGateActivated.end(),
+        false);
+
+    if (level)
+    {
+        pawn->SetSpawnPosition(level->GetPlayerSpawnPosition());
+        pawn->Respawn();
+    }
+}
+
 void Game::Update(float deltaTime)
 {
     if (level)
@@ -1981,6 +2068,12 @@ void Game::Update(float deltaTime)
     }
 
     UpdateDoors(deltaTime);
+
+    // After collision resolution (where a death this frame would have
+    // happened) and before the camera, so a Game Over's reset position is
+    // what the camera follows this same frame rather than lagging a frame
+    // behind.
+    UpdateGameOver(deltaTime);
 
     UpdateCamera();
 }

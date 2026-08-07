@@ -700,6 +700,15 @@ bool Pawn::ConsumeBishopActivationPulse()
     return true;
 }
 
+bool Pawn::ConsumeDeathPulse()
+{
+    if (!deathPulsePending)
+        return false;
+
+    deathPulsePending = false;
+    return true;
+}
+
 void Pawn::SetLevel(const Level* level)
 {
     this->level = level;
@@ -813,6 +822,7 @@ void Pawn::TakeDamage(float damage)
     {
         health = 0.0f;
         std::cout << "Pawn has died! Respawning..." << std::endl;
+        deathPulsePending = true;
         Respawn();
     }
 }
