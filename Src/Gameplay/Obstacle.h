@@ -50,6 +50,22 @@ const char* GetObstacleTypeName(ObstacleType type);
 
 const char* GetHazardTypeName(HazardType type);
 
+/// Whether the Bishop's (and therefore the Queen's) clearing ability may
+/// remove this prop.
+///
+/// The rule is "stationary only". The ability breaks the battlefield's
+/// furniture apart - barricades, walls, rocks, trees, bushes, spike beds -
+/// and deliberately does nothing to anything in flight or on the move. A
+/// player who banks the Bishop is buying a path through the scenery, not a
+/// panic button that deletes the arrow already heading for them.
+///
+/// Cow is the one exception in this enum, and the reason this predicate
+/// exists rather than being "return true". It sits in ObstacleType only
+/// because that is where its mesh lives; in play it is a moving hazard
+/// driven by a MovingHazard with the FollowTarget pattern, so it falls
+/// under the same protection as every other moving hazard.
+bool IsAbilityClearable(ObstacleType type);
+
 /// Base for a renderable obstacle asset instance, stationary or moving.
 ///
 /// This layer owns visual state only: mesh, material, transform and shadow.
@@ -76,9 +92,24 @@ public:
 
     const char* GetName() const override;
 
+    /// Marks this instance as level architecture rather than a breakable
+    /// prop, exempting it from the Bishop's clearing ability.
+    ///
+    /// Needed because a couple of obstacles are load-bearing despite being
+    /// ordinary types: the checkpoint gate is fenced off by invisible Wall
+    /// instances, and clearing those would let the player walk around the
+    /// gate instead of opening it. The type alone cannot tell those apart
+    /// from a wall that is genuinely meant to be broken through, so the
+    /// distinction is per-instance and set where the obstacle is placed.
+    void SetStructural(bool structural);
+
+    bool IsStructural() const;
+
 private:
 
     ObstacleType type;
+
+    bool structural = false;
 };
 
 /// The visual anchor referenced by a MovingHazard.

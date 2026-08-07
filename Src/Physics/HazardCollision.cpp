@@ -47,6 +47,19 @@ namespace
                 glm::vec3 center = visual.GetGroundPosition() + glm::vec3(0.0f, visual.GetHeight() * 0.5f, 0.0f);
                 comp.SetCircle(center, radius);
             }
+            else if (type == HazardType::Fireball)
+            {
+                // Meshless: it is drawn as a sprite, so UpdateFromEntity has
+                // no model to measure and would leave a zero-sized box the
+                // pawn could walk straight through. The radius comes from
+                // config instead, centred on the projectile's flight height
+                // rather than the ground beneath it.
+                const glm::vec3 center =
+                    visual.GetGroundPosition() +
+                    glm::vec3(0.0f, GameConfig::FireballHitRadius, 0.0f);
+
+                comp.SetCircle(center, GameConfig::FireballHitRadius);
+            }
             else if (type == HazardType::RollingLog)
             {
                 // Rolling Log is a cylinder. We use a Box.
@@ -175,6 +188,20 @@ void HazardCollision::CheckMovingHazards(
         if (!hazard || hazard->HasExpired() || !hazard->IsActive())
             continue;
 
+        // Standing zones - the fireball's floor fire and lightning's strike
+        // area - belong to CheckAreaHazards, which tests them by radius.
+        // Letting them fall through here as well would run two damage paths
+        // over one hazard: the second is swallowed by the damage cooldown
+        // today, so it costs nothing visible, but it is the kind of thing
+        // that starts double-hitting the moment the cooldown is retuned.
+        const HazardMovementPattern pattern = hazard->GetMovementPattern();
+
+        if (pattern == HazardMovementPattern::TemporaryZone ||
+            pattern == HazardMovementPattern::WarningThenStrike)
+        {
+            continue;
+        }
+
         const GroundEntity& visual = hazard->GetVisual();
 
         // Skip if the pawn is immune
@@ -226,28 +253,37 @@ void HazardCollision::CheckMovingHazards(
                 continue;
             }
 
-            // Apply damage and effects
-            ApplyDamage(damage, knockbackDir, knockback);
-
-            // Special effects for specific hazard types
+            // Per-type damage and knockback, decided before the single
+            // ApplyDamage call below.
+            //
+            // These used to be a second ApplyDamage stacked on top of a
+            // generic first one. Only the first ever landed - the second
+            // arrived inside its own cooldown and was dropped - so the
+            // per-type numbers were being written but never applied.
             if (type == HazardType::Fireball)
             {
-                ApplyDamage(1.0f, knockbackDir, 2.0f);
+                damage = GameConfig::FireballDamage;
+                knockback = GameConfig::FireballKnockback;
             }
             else if (type == HazardType::Cannonball)
             {
-                ApplyDamage(0.5f, knockbackDir, 2.5f);
+                damage = 0.5f;
+                knockback = 2.5f;
             }
             else if (type == HazardType::RollingRock)
             {
                 // Rolling Rock: "large hit area, easier to see, harder to move around"
-                ApplyDamage(1.0f, knockbackDir, 2.0f); // High damage, strong push
+                damage = 1.0f;
+                knockback = 2.0f; // High damage, strong push
             }
             else if (type == HazardType::RollingLog)
             {
                 // Rolling Log: Similar damage, slightly lighter
-                ApplyDamage(0.5f, knockbackDir, 2.5f);
+                damage = 0.5f;
+                knockback = 2.5f;
             }
+
+            ApplyDamage(damage, knockbackDir, knockback);
         }
     }
 }
@@ -383,10 +419,15 @@ void HazardCollision::CheckAreaHazards(
             {
                 if (hazard->IsActive())
                 {
-                    float distance = glm::length(pawnPos - visual.GetGroundPosition());
-                    float burnRadius = 0.6f;
+                    // Measured on the ground plane: the patch burns whoever
+                    // is standing in it, and a jump does not clear it.
+                    const glm::vec3 offset =
+                        pawnPos - visual.GetGroundPosition();
 
-                    if (distance < burnRadius)
+                    const float distance = glm::length(
+                        glm::vec3(offset.x, 0.0f, offset.z));
+
+                    if (distance < GameConfig::FloorFireRadius)
                     {
                         if (pawn->HasShield())
                         {
@@ -394,7 +435,14 @@ void HazardCollision::CheckAreaHazards(
                         }
                         else if (!pawn->IsImmuneToHazards())
                         {
-                            ApplyDamage(0.2f, glm::vec3(0.0f), 0.0f);
+                            // No knockback: being pushed out of a fire the
+                            // player walked into would undo the hazard.
+                            // The shared cooldown paces the burn into
+                            // ticks rather than a per-frame drain.
+                            ApplyDamage(
+                                GameConfig::FloorFireDamage,
+                                glm::vec3(0.0f),
+                                0.0f);
                         }
                     }
                 }
@@ -407,12 +455,23 @@ void HazardCollision::CheckAreaHazards(
             const GroundEntity& visual = hazard->GetVisual();
             const Hazard* hazardVisual = dynamic_cast<const Hazard*>(&visual);
 
+            // IsActive() is false for the whole warning phase and true only
+            // once the bolt actually lands, so this tests the pawn's position
+            // at strike time. Leaving the marked area before then means the
+            // test simply never sees the pawn - which is the "no damage if
+            // you moved" rule, with no extra bookkeeping.
+            //
+            // Every lightning zone is an independent hazard in this list, so
+            // any number of them can be warning and striking at once.
             if (hazardVisual && hazardVisual->GetType() == HazardType::Lightning && hazard->IsActive())
             {
-                float distance = glm::length(pawnPos - visual.GetGroundPosition());
-                float strikeRadius = 0.5f;
+                const glm::vec3 offset =
+                    pawnPos - visual.GetGroundPosition();
 
-                if (distance < strikeRadius)
+                const float distance = glm::length(
+                    glm::vec3(offset.x, 0.0f, offset.z));
+
+                if (distance < GameConfig::LightningStrikeRadius)
                 {
                     if (pawn->HasShield())
                     {
@@ -420,7 +479,10 @@ void HazardCollision::CheckAreaHazards(
                     }
                     else if (!pawn->IsImmuneToHazards())
                     {
-                        ApplyDamage(1.0f, glm::vec3(0.0f, 1.0f, 0.0f), 0.5f);
+                        ApplyDamage(
+                            GameConfig::LightningDamage,
+                            glm::vec3(0.0f, 1.0f, 0.0f),
+                            GameConfig::LightningKnockback);
                     }
                 }
             }

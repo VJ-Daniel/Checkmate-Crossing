@@ -357,6 +357,12 @@ void Game::BuildCheckpointGate()
         // Place it perfectly over the stone wall
         wall->SetGroundPosition(glm::vec3(xPos, gateY, gateZ + 0.3f)); // Slightly forward to overlap
         wall->SetShadowVisible(false);
+
+        // Part of the gate, not scenery: the Bishop's clearing ability must
+        // not be able to delete the barrier and let the player walk around
+        // the checkpoint instead of opening it.
+        wall->SetStructural(true);
+
         wall->Initialize();
 
         stationaryHazards.push_back(wall);
@@ -554,8 +560,9 @@ void Game::BuildLevelHazards()
                     // The curved sweep offsets the path perpendicular to
                     // itself, and a lane runs along X - so the bow was in Z
                     // and carried the spear a full 1.2 units out of the row
-                    // it was fired along. SpawnCurvedHazard is left in place
-                    // for the fireball, which the GDD does want curving.
+                    // it was fired along. The fireball hit the same problem
+                    // and now arcs vertically instead (RegisterFireballVolley),
+                    // which is the curve the GDD is describing.
                     hazardManager->SpawnLinearHazard(
                         HazardType::Spear,
                         glm::vec3(-halfWidth - 0.5f, y, z),
@@ -614,30 +621,35 @@ void Game::BuildLevelHazards()
         }
     }
 
-    // FireballLightning section (3 rows): a repeating curved Fireball
-    // sweep (burn patches are already automatic in HazardManager::Update),
-    // two Lightning warning zones flanking a clear centre corridor, and
-    // RollingLog rolling through the whole span, faster and with a
+    // FireballLightning section (3 rows): fireballs lobbed in along the
+    // outer rows (burn patches are already automatic in
+    // HazardManager::Update), Lightning warning zones on the middle row,
+    // and RollingLog rolling through the whole span, faster and with a
     // smaller hit area than the Rolling Rock gauntlet below, per the GDD.
+    //
+    // This is the only place either hazard is set up. Both used to be
+    // registered here AND again in two separate blocks further down, which
+    // put three fireball volleys and three lightning zones on the same
+    // three rows.
     {
         auto rows = FindConsecutiveRowsOfType(*level, LaneType::FireballLightning);
 
+        // Outer rows get the fireballs, entering from opposite edges so the
+        // section is threatened from both sides rather than one.
         if (rows.size() >= 1 && rows[0])
         {
-            const float y = rows[0]->GetSurfaceHeight();
-            const float z = rows[0]->GetCenterZ();
+            RegisterFireballVolley(
+                rows[0]->GetSurfaceHeight(),
+                rows[0]->GetCenterZ(),
+                true);
+        }
 
-            hazardManager->RegisterRepeatingSpawn(
-                4.0f,
-                [this, y, z, halfWidth]()
-                {
-                    hazardManager->SpawnCurvedHazard(
-                        HazardType::Fireball,
-                        glm::vec3(-halfWidth - 0.5f, y, z),
-                        glm::vec3(halfWidth + 0.5f, y, z),
-                        3.4f,
-                        1.3f);
-                });
+        if (rows.size() >= 3 && rows[2])
+        {
+            RegisterFireballVolley(
+                rows[2]->GetSurfaceHeight(),
+                rows[2]->GetCenterZ(),
+                false);
         }
 
         if (rows.size() >= 2 && rows[1])
@@ -646,13 +658,26 @@ void Game::BuildLevelHazards()
             const float z = rows[1]->GetCenterZ();
 
             // "An unavoidable strike if the player stays in a marked
-            // danger area for too long." Warning phase gives a chance to
-            // move away; centre corridor between the two zones stays clear.
-            hazardManager->SpawnWarningHazard(
-                glm::vec3(-halfWidth * 0.55f, y, z), 1.5f, 1.0f);
+            // danger area for too long." The warning phase is the reaction
+            // window, and the gaps between zones are the way through.
+            //
+            // Three independent zones on one row, all warning and striking
+            // on their own timers -- the collision pass tests each
+            // separately, so simultaneous strikes need nothing special.
+            const float lightningX[3] =
+            {
+                -halfWidth * 0.55f,
+                0.0f,
+                halfWidth * 0.55f
+            };
 
-            hazardManager->SpawnWarningHazard(
-                glm::vec3(halfWidth * 0.55f, y, z), 1.5f, 1.0f);
+            for (float x : lightningX)
+            {
+                hazardManager->SpawnWarningHazard(
+                    glm::vec3(x, y, z),
+                    GameConfig::LightningWarningDuration,
+                    GameConfig::LightningStrikeDuration);
+            }
         }
 
         if (!rows.empty() && rows.front() && rows.back())
@@ -722,61 +747,62 @@ void Game::BuildLevelHazards()
         }
     }
 
-    // Lightning: timed warning marker, then a brief damaging strike. The
-    // hazard itself is a transform-only anchor; AppendLightningSprites draws
-    // its warning, bolt and impact frames from the sprite pack.
-    {
-        const int row = level->FindRowOfType(LaneType::FireballLightning);
+    // Fireball and Lightning are set up once, in the FireballLightning
+    // block above. Two further blocks used to repeat both here.
+}
 
-        if (const Lane* lane = level->GetLane(row))
+void Game::RegisterFireballVolley(
+    float surfaceHeight,
+    float laneZ,
+    bool fromLeft)
+{
+    if (!hazardManager)
+        return;
+
+    const float halfWidth = Level::GetPlayableHalfWidth();
+
+    // Launched from just outside the playable width so it is already in
+    // flight when it enters the frame, rather than appearing from nothing.
+    const float edgeX = halfWidth + GameConfig::FireballSpawnMargin;
+
+    const float startX = fromLeft ? -edgeX : edgeX;
+
+    const float landingX = fromLeft
+        ? startX + GameConfig::FireballTravelDistance
+        : startX - GameConfig::FireballTravelDistance;
+
+    // Both ends share laneZ, so the whole trajectory stays on the row: the
+    // parabola is purely vertical and the fireball cannot drift into a
+    // neighbouring lane on its way across.
+    const glm::vec3 start(startX, surfaceHeight, laneZ);
+    const glm::vec3 landing(landingX, surfaceHeight, laneZ);
+
+    // Flight time from distance and speed, so "speed" is a real world-units
+    // per second figure rather than an inverse duration to be tuned blind.
+    const float duration =
+        GameConfig::FireballSpeed > 0.0f
+        ? GameConfig::FireballTravelDistance / GameConfig::FireballSpeed
+        : 1.0f;
+
+    hazardManager->RegisterRepeatingSpawn(
+        GameConfig::FireballSpawnInterval,
+        [this, start, landing, duration]()
         {
-            hazardManager->SpawnWarningHazard(
-                glm::vec3(
-                    0.0f,
-                    lane->GetSurfaceHeight(),
-                    lane->GetCenterZ()),
-                0.50f,
-                1.0f);
-        }
-    }
-
-    // Fireball: curved projectile that leaves a temporary impact zone when
-    // it reaches its destination. HazardManager handles the lingering zone;
-    // AppendFireballSprites draws both phases from the sprite pack.
-    {
-        const int row = level->FindRowOfType(LaneType::FireballLightning);
-
-        if (const Lane* lane = level->GetLane(row))
-        {
-            const float y = lane->GetSurfaceHeight();
-            const float z = lane->GetCenterZ() - 1.0f;
-            const float range = halfWidth * 0.65f;
-
-            hazardManager->RegisterRepeatingSpawn(
-                4.5f,
-                [this, y, z, range]()
-                {
-                    hazardManager->SpawnCurvedHazard(
-                        HazardType::Fireball,
-                        glm::vec3(-range, y, z),
-                        glm::vec3(range, y, z),
-                        3.2f,
-                        1.0f);
-                });
-
-            hazardManager->RegisterRepeatingSpawn(
-                5.0f,
-                [this, y, z, range]()
-                {
-                    hazardManager->SpawnCurvedHazard(
-                        HazardType::Fireball,
-                        glm::vec3(range, y, z - 1.0f),
-                        glm::vec3(-range, y, z - 1.0f),
-                        3.2f,
-                        -1.0f);
-                });
-        }
-    }
+            // ArcProjectile, not CurvedSweep: the sweep bows sideways in the
+            // ground plane, which pushed the fireball a full curve-offset out
+            // of its own row. The arc lifts it in Y instead - the parabola
+            // the GDD describes - and leaves X/Z on the straight line between
+            // the two lane-aligned endpoints.
+            //
+            // Landing is where HazardManager drops the floor fire, which is
+            // why the arc ends on the ground rather than at flight height.
+            hazardManager->SpawnArcHazard(
+                HazardType::Fireball,
+                start,
+                landing,
+                duration,
+                GameConfig::FireballArcHeight);
+        });
 }
 
 void Game::BuildLevelCollectibles()
@@ -950,13 +976,21 @@ void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
                 0.0f,
                 1.0f);
 
+            // Sized from the strike radius the collision pass actually
+            // tests, so the marker on the ground is the danger area rather
+            // than an approximation of it.
             Sprite warning = Sprite::CreateGroundDecal(
                 "lightning_warning_circle",
                 ground,
-                glm::vec2(2.8f, 2.8f));
+                glm::vec2(
+                    GameConfig::LightningStrikeRadius * 2.0f,
+                    GameConfig::LightningStrikeRadius * 2.0f));
 
             warning.tint = glm::vec3(1.0f, 0.0f, 0.0f);
-            warning.opacity = 0.16f + 0.10f * warningT;
+
+            // Brightens as the strike approaches, so the marker reads as a
+            // countdown and not just a decoration.
+            warning.opacity = 0.20f + 0.45f * warningT;
             warning.layer = 10;
 
             frameSprites.push_back(warning);
@@ -1041,23 +1075,29 @@ void Game::AppendFireballSprites(std::vector<Sprite>& frameSprites) const
 
         const glm::vec3 ground = hazard->GetVisual().GetGroundPosition();
 
+        // The projectile in flight.
+        //
+        // GetGroundPosition already carries the parabola: UpdateArcProjectile
+        // writes the lifted position straight into the visual, so the sprite
+        // follows the arc without recomputing any of it here. Movement stays
+        // in MovingHazard, drawing stays here.
         if (hazard->GetMovementPattern() ==
-            HazardMovementPattern::CurvedSweep)
+            HazardMovementPattern::ArcProjectile)
         {
             const float duration =
-                std::max(hazard->GetCurveDuration(), 0.001f);
+                std::max(hazard->GetArcDuration(), 0.001f);
             const float t = std::clamp(
-                hazard->GetCurveElapsed() / duration,
+                hazard->GetArcElapsed() / duration,
                 0.0f,
                 1.0f);
-            const int frame = std::clamp(
-                1 + static_cast<int>(t * 8.0f),
-                1,
-                8);
+
+            // Cycled rather than stretched across the flight, so a long lob
+            // still reads as a burning ball rather than one slow morph.
+            const int frame = 1 + (static_cast<int>(t * 16.0f) % 8);
 
             Sprite fireball = Sprite::CreateBillboard(
                 NumberedTextureName("fire_spell", frame),
-                ground + glm::vec3(0.0f, 0.75f, 0.0f),
+                ground + glm::vec3(0.0f, GameConfig::FireballHitRadius, 0.0f),
                 glm::vec2(1.6f, 0.9f));
 
             fireball.flipX = hazard->GetVelocity().x > 0.0f;
@@ -1080,15 +1120,144 @@ void Game::AppendFireballSprites(std::vector<Sprite>& frameSprites) const
                 1,
                 10);
 
-            Sprite impact = Sprite::CreateGroundDecal(
+            // The floor fire itself: a camera-facing billboard rather than a
+            // mesh, so it reads as flame from any angle the camera takes.
+            // Sat half its own height up so the quad's bottom edge meets the
+            // ground it is burning on instead of sinking into it.
+            Sprite fire = Sprite::CreateBillboard(
+                NumberedTextureName("fireball_explosion", frame),
+                ground + glm::vec3(
+                    0.0f,
+                    GameConfig::FloorFireSpriteSize * 0.5f,
+                    0.0f),
+                glm::vec2(
+                    GameConfig::FloorFireSpriteSize,
+                    GameConfig::FloorFireSpriteSize));
+
+            // Fades out over its lifetime, so the patch going cold is
+            // visible before it stops dealing damage.
+            fire.opacity = 0.95f * (1.0f - t * 0.35f);
+            fire.layer = 22;
+
+            frameSprites.push_back(fire);
+
+            // A scorch decal underneath, sized to the damaging radius. This
+            // is what tells the player exactly where the ground is unsafe -
+            // the billboard above it is tall and would otherwise overstate
+            // the footprint.
+            Sprite scorch = Sprite::CreateGroundDecal(
                 NumberedTextureName("fireball_explosion", frame),
                 ground,
-                glm::vec2(3.5f, 3.5f));
+                glm::vec2(
+                    GameConfig::FloorFireRadius * 2.0f,
+                    GameConfig::FloorFireRadius * 2.0f));
 
-            impact.opacity = 0.95f;
-            impact.layer = 18;
+            scorch.opacity = 0.55f;
+            scorch.layer = 18;
 
-            frameSprites.push_back(impact);
+            frameSprites.push_back(scorch);
+        }
+    }
+}
+
+void Game::TriggerAbilityClearPulse()
+{
+    if (!pawn)
+        return;
+
+    const glm::vec3 origin = pawn->GetTransform().GetPosition();
+
+    AbilityPulse pulse;
+    pulse.origin = origin;
+
+    // The ability's whole gameplay effect is this one call. It removes only
+    // stationary props (see IsAbilityClearable) and reports where they were,
+    // which is all the effect below needs.
+    HazardManager::ClearStationaryObstacles(
+        stationaryHazards,
+        origin,
+        GameConfig::BishopClearRadius,
+        GameConfig::BishopRemovalCount,
+        pulse.clearedPositions);
+
+    // Shown even when nothing was in range. A pulse that fires into empty
+    // space still tells the player the ability went off and how far it
+    // reached, which is more useful than silence that reads as a bug.
+    abilityPulses.push_back(std::move(pulse));
+}
+
+void Game::UpdateAbilityPulses(float deltaTime)
+{
+    for (AbilityPulse& pulse : abilityPulses)
+        pulse.elapsed += deltaTime;
+
+    abilityPulses.erase(
+        std::remove_if(
+            abilityPulses.begin(),
+            abilityPulses.end(),
+            [](const AbilityPulse& pulse)
+            {
+                return pulse.elapsed >= GameConfig::AbilityPulseDuration;
+            }),
+        abilityPulses.end());
+}
+
+void Game::AppendAbilityPulseSprites(std::vector<Sprite>& frameSprites) const
+{
+    for (const AbilityPulse& pulse : abilityPulses)
+    {
+        const float t = std::clamp(
+            pulse.elapsed / std::max(GameConfig::AbilityPulseDuration, 0.001f),
+            0.0f,
+            1.0f);
+
+        // The ring: a flat decal growing from the pawn out to the ability's
+        // real clear radius, so what the player sees expand is exactly the
+        // area that was tested. Fades as it grows.
+        const float diameter = glm::mix(
+            GameConfig::AbilityPulseStartDiameter,
+            GameConfig::AbilityPulseEndDiameter,
+            t);
+
+        const int ringFrame = std::clamp(
+            1 + static_cast<int>(t * 10.0f),
+            1,
+            10);
+
+        Sprite ring = Sprite::CreateGroundDecal(
+            NumberedTextureName("lightning_explosion", ringFrame),
+            pulse.origin,
+            glm::vec2(diameter, diameter));
+
+        ring.opacity = 0.75f * (1.0f - t);
+        ring.layer = 16;
+
+        frameSprites.push_back(ring);
+
+        // One burst per prop that was actually destroyed. This is the part
+        // that answers "what did that just remove?" - the ring alone shows
+        // reach, but only these show the result.
+        const int burstFrame = std::clamp(
+            1 + static_cast<int>(t * 10.0f),
+            1,
+            10);
+
+        for (const glm::vec3& position : pulse.clearedPositions)
+        {
+            Sprite burst = Sprite::CreateBillboard(
+                NumberedTextureName("fireball_explosion", burstFrame),
+                position + glm::vec3(
+                    0.0f,
+                    GameConfig::AbilityClearBurstSize * 0.5f,
+                    0.0f),
+                glm::vec2(
+                    GameConfig::AbilityClearBurstSize,
+                    GameConfig::AbilityClearBurstSize));
+
+            burst.opacity = 1.0f - t * 0.5f;
+            burst.layer = 26;
+
+            frameSprites.push_back(burst);
         }
     }
 }
@@ -1308,13 +1477,16 @@ void Game::Update(float deltaTime)
         }
     }
 
-    // Bishop's ability mutates the world (removing nearby hazards)
-    if (pawn && pawn->ConsumeBishopActivationPulse() && hazardManager)
-    {
-        hazardManager->RemoveNearest(
-            pawn->GetTransform().GetPosition(),
-            GameConfig::BishopRemovalCount);
-    }
+    // Bishop's ability mutates the world by breaking down the stationary
+    // props around the pawn. The Queen raises the same pulse, so she inherits
+    // this behaviour exactly rather than having a second copy of it.
+    //
+    // Moving hazards are deliberately untouched: an arrow already in flight
+    // stays in flight.
+    if (pawn && pawn->ConsumeBishopActivationPulse())
+        TriggerAbilityClearPulse();
+
+    UpdateAbilityPulses(deltaTime);
 
     // E's target isn't decided inside Pawn (see ConsumeInteractPulse) --
     // resolve it here against whatever's actually in the level: the
@@ -1507,6 +1679,7 @@ void Game::Render()
     std::vector<Sprite> frameSprites = sprites;
     AppendLightningSprites(frameSprites);
     AppendFireballSprites(frameSprites);
+    AppendAbilityPulseSprites(frameSprites);
 
     if (spriteRenderer)
         spriteRenderer->DrawAll(frameSprites);

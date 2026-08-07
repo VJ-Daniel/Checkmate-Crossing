@@ -129,41 +129,78 @@ MovingHazard& HazardManager::SpawnCow(
     return *hazards.back();
 }
 
-int HazardManager::RemoveNearest(const glm::vec3& position, int count)
+int HazardManager::ClearStationaryObstacles(
+    std::vector<std::shared_ptr<StaticObstacle>>& obstacles,
+    const glm::vec3& origin,
+    float radius,
+    int maxCount,
+    std::vector<glm::vec3>& clearedPositions)
 {
-    if (count <= 0)
+    if (maxCount <= 0 || radius <= 0.0f)
         return 0;
 
-    std::vector<std::size_t> order(hazards.size());
+    // Gather the eligible ones first, as indices paired with their distance,
+    // so the "which are clearable" rule and the "which are nearest" rule stay
+    // separate steps rather than one tangled predicate.
+    struct Candidate
+    {
+        std::size_t index = 0;
+        float distance = 0.0f;
+    };
 
-    for (std::size_t index = 0; index < order.size(); ++index)
-        order[index] = index;
+    std::vector<Candidate> candidates;
+
+    for (std::size_t index = 0; index < obstacles.size(); ++index)
+    {
+        const auto& obstacle = obstacles[index];
+
+        if (!obstacle ||
+            obstacle->IsStructural() ||
+            !IsAbilityClearable(obstacle->GetType()))
+        {
+            continue;
+        }
+
+        // Measured on the ground plane. Height would only ever push a tall
+        // prop out of range for being tall, which is not the intent.
+        const glm::vec3 offset =
+            obstacle->GetGroundPosition() - origin;
+
+        const float distance = glm::length(
+            glm::vec3(offset.x, 0.0f, offset.z));
+
+        if (distance <= radius)
+            candidates.push_back({ index, distance });
+    }
 
     std::sort(
-        order.begin(),
-        order.end(),
-        [&](std::size_t a, std::size_t b)
+        candidates.begin(),
+        candidates.end(),
+        [](const Candidate& a, const Candidate& b)
         {
-            const float distanceA = glm::length(
-                hazards[a]->GetVisual().GetGroundPosition() - position);
-            const float distanceB = glm::length(
-                hazards[b]->GetVisual().GetGroundPosition() - position);
-
-            return distanceA < distanceB;
+            return a.distance < b.distance;
         });
 
     const int removeCount = std::min(
-        count, static_cast<int>(order.size()));
+        maxCount, static_cast<int>(candidates.size()));
+
+    std::vector<std::size_t> toRemove;
+    toRemove.reserve(static_cast<std::size_t>(removeCount));
+
+    for (int slot = 0; slot < removeCount; ++slot)
+    {
+        const std::size_t index = candidates[slot].index;
+
+        clearedPositions.push_back(obstacles[index]->GetGroundPosition());
+        toRemove.push_back(index);
+    }
 
     // Erase highest index first so earlier erasures don't shift the
     // indices still waiting to be removed.
-    std::vector<std::size_t> toRemove(
-        order.begin(), order.begin() + removeCount);
-
     std::sort(toRemove.rbegin(), toRemove.rend());
 
     for (std::size_t index : toRemove)
-        hazards.erase(hazards.begin() + static_cast<std::ptrdiff_t>(index));
+        obstacles.erase(obstacles.begin() + static_cast<std::ptrdiff_t>(index));
 
     return removeCount;
 }
@@ -218,9 +255,14 @@ void HazardManager::Update(float deltaTime, const glm::vec3& pawnGroundPosition)
 
         const auto* fireball = dynamic_cast<const Hazard*>(&hazard->GetVisual());
 
+        // Any fireball that finished a flight leaves a patch. Tested by "not
+        // already a patch" rather than by naming the flight pattern, so
+        // retuning the trajectory cannot silently switch the fire off - which
+        // is exactly what would have happened when the arc replaced the old
+        // sideways sweep.
         if (fireball &&
             fireball->GetType() == HazardType::Fireball &&
-            hazard->GetMovementPattern() == HazardMovementPattern::CurvedSweep)
+            hazard->GetMovementPattern() != HazardMovementPattern::TemporaryZone)
         {
             burnPositions.push_back(hazard->GetVisual().GetGroundPosition());
         }

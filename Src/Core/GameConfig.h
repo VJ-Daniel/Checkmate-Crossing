@@ -241,16 +241,124 @@ namespace GameConfig
     /// short time."
     constexpr float QueenAbilityDuration = 6.0f;
 
-    /// Bishop: how many nearby hazards its ability removes.
+    /// Bishop: how many nearby stationary obstacles its ability clears.
+    ///
+    /// Stationary only, by design: the Bishop breaks down the battlefield's
+    /// props, it does not swat projectiles out of the air. See
+    /// IsAbilityClearable in Obstacle.h for exactly which types qualify.
     constexpr int BishopRemovalCount = 2;
+
+    /// How far from the pawn the Bishop's pulse reaches. Obstacles beyond
+    /// this are left alone no matter how few were found inside it.
+    constexpr float BishopClearRadius = 3.2f;
 
     /// Bishop clears hazards immediately, but its model lingers briefly so
     /// the player can see which ability just fired.
     constexpr float BishopVisualLingerDuration = 1.0f;
 
+    //---------------------------------------------------------
+    // Bishop / Queen clearing effect
+    //
+    // Deliberately just two animated sprites: one ring showing how far the
+    // pulse reached, and one burst on each prop it actually removed. Both
+    // are rebuilt per frame from a timer, so swapping them for a particle
+    // system later means replacing AppendAbilityPulseSprites and nothing
+    // else.
+    //---------------------------------------------------------
+
+    /// How long the whole pulse effect is on screen.
+    constexpr float AbilityPulseDuration = 0.55f;
+
+    /// Diameter the expanding ring starts and finishes at, in world units.
+    /// The end value is twice BishopClearRadius so the ring lands exactly on
+    /// the area the ability actually cleared.
+    constexpr float AbilityPulseStartDiameter = 0.8f;
+
+    constexpr float AbilityPulseEndDiameter = BishopClearRadius * 2.0f;
+
+    /// Size of the burst drawn over each cleared obstacle.
+    constexpr float AbilityClearBurstSize = 1.6f;
+
+    //---------------------------------------------------------
+    // Fireball (GDD section 2)
+    //
+    // Launched from the side of the field and lobbed along a lane on a
+    // parabolic arc. Every number the trajectory needs is here: the arc is
+    // solved mathematically in MovingHazard::UpdateArcProjectile, with no
+    // physics engine involved.
+    //---------------------------------------------------------
+
+    /// Horizontal travel speed, in world units per second. The flight time
+    /// is derived from this and FireballTravelDistance.
+    constexpr float FireballSpeed = 5.0f;
+
+    /// Peak height of the arc above the lane surface, at the midpoint.
+    constexpr float FireballArcHeight = 2.4f;
+
+    /// How far along the lane a fireball travels before it lands. Kept
+    /// shorter than the field is wide so it comes down inside the lane
+    /// rather than sailing off the far edge.
+    constexpr float FireballTravelDistance = 7.0f;
+
+    /// How far outside the playable half-width a fireball is launched from,
+    /// so it enters the frame already in flight.
+    constexpr float FireballSpawnMargin = 1.0f;
+
+    /// Cooldown between launches on a single lane.
+    constexpr float FireballSpawnInterval = 4.0f;
+
+    /// Radius of the projectile's own hit volume while it is airborne. The
+    /// fireball is meshless (it is drawn as a sprite), so its collision
+    /// cannot be derived from a model and is stated here instead.
+    constexpr float FireballHitRadius = 0.45f;
+
+    constexpr float FireballDamage = 1.0f;
+
+    constexpr float FireballKnockback = 2.0f;
+
+    //---------------------------------------------------------
+    // Floor fire left behind by a fireball impact
+    //---------------------------------------------------------
+
     /// How long a fireball's residual fire patch lingers after impact,
     /// per the GDD's "leave fire behind that deals continuous damage."
     constexpr float FireballBurnDuration = 2.0f;
+
+    /// How far from the patch centre the fire burns.
+    constexpr float FloorFireRadius = 0.6f;
+
+    /// Damage per application while standing in it. Applied through the
+    /// shared damage cooldown, so this is a tick rather than a per-frame
+    /// drain.
+    constexpr float FloorFireDamage = 0.5f;
+
+    /// On-screen size of the camera-facing flame billboard.
+    constexpr float FloorFireSpriteSize = 2.2f;
+
+    //---------------------------------------------------------
+    // Lightning (GDD section 2)
+    //
+    // Two phases: a warning marker the player can walk out of, then a
+    // strike that only damages whoever is still inside. Any number of these
+    // can run at once - each is an independent hazard.
+    //---------------------------------------------------------
+
+    /// How long the ground marker shows before the bolt lands. This is the
+    /// player's whole reaction window, so it is the first number to raise
+    /// if the strike feels unfair.
+    constexpr float LightningWarningDuration = 1.5f;
+
+    /// How long the strike itself lasts. Damage is tested throughout, but
+    /// the shared cooldown means one strike lands one hit.
+    constexpr float LightningStrikeDuration = 1.0f;
+
+    /// Radius of the marked area, used for both the damage test and the
+    /// warning decal, so what is drawn is exactly what is dangerous.
+    constexpr float LightningStrikeRadius = 1.1f;
+
+    constexpr float LightningDamage = 1.0f;
+
+    constexpr float LightningKnockback = 0.5f;
 
     /// How close the pawn needs to be to a collectible ally to pick it up.
     constexpr float CollectiblePickupRadius = 0.6f;
@@ -300,12 +408,10 @@ namespace GameConfig
     constexpr float MudSlowDuration = 2.0f;
     constexpr float MudSlowAmount = 0.5f;
 
-    /// Fireball burn radius and damage
-    constexpr float FireballBurnRadius = 0.6f;
-    constexpr float FireballBurnDamagePerTick = 0.2f;
-
-    /// Lightning strike
-    constexpr float LightningStrikeRadius = 0.5f;
-    constexpr float LightningDamage = 1.0f;
+    // Fireball burn and lightning strike tuning used to be repeated here.
+    // They now live with the rest of each hazard's numbers in the Fireball,
+    // floor fire and Lightning sections above -- this copy was never read
+    // by anything, while the collision pass hardcoded its own values, so
+    // changing these had no effect at all.
 }
 

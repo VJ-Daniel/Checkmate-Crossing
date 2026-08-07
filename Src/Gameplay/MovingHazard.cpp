@@ -520,6 +520,16 @@ float MovingHazard::GetCurveDuration() const
     return curveDuration;
 }
 
+float MovingHazard::GetArcElapsed() const
+{
+    return arcElapsed;
+}
+
+float MovingHazard::GetArcDuration() const
+{
+    return arcDuration;
+}
+
 float MovingHazard::GetZoneElapsed() const
 {
     return zoneElapsed;

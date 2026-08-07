@@ -153,6 +153,21 @@ private:
     /// ability is most useful for.
     void BuildLevelCollectibles();
 
+    /// Registers one lane's repeating fireball launches.
+    ///
+    /// The fireball is lobbed in from beyond the edge of the field and comes
+    /// down inside the lane it was fired along: laneZ is used for both ends
+    /// of the flight, so the arc rises and falls without ever leaving the
+    /// row. fromLeft only picks which edge it enters from.
+    ///
+    /// Every number involved - speed, arc height, travel distance, spawn
+    /// margin, cooldown - lives in GameConfig, so retuning the hazard does
+    /// not mean editing level layout code.
+    void RegisterFireballVolley(
+        float surfaceHeight,
+        float laneZ,
+        bool fromLeft);
+
     //---------------------------------------------------------
     // Interaction (E)
     //
@@ -196,6 +211,43 @@ private:
     /// Adds per-frame fireball sprites for the flying projectile and the
     /// temporary impact zone left behind after it lands.
     void AppendFireballSprites(std::vector<Sprite>& frameSprites) const;
+
+    //---------------------------------------------------------
+    // Bishop / Queen clearing ability
+    //
+    // Gameplay and feedback are deliberately two steps: the clearing itself
+    // is HazardManager::ClearStationaryObstacles, which knows nothing about
+    // drawing, and everything below only ever reads the positions it
+    // reported back.
+    //---------------------------------------------------------
+
+    /// Runs the Bishop's (and the Queen's) clearing pulse: removes the
+    /// eligible stationary props around the pawn and starts the effect that
+    /// shows which ones went.
+    void TriggerAbilityClearPulse();
+
+    /// Ages every live pulse and drops the finished ones.
+    void UpdateAbilityPulses(float deltaTime);
+
+    /// Adds the expanding ring and the per-obstacle bursts for any pulse
+    /// still running. Rebuilt every Render from the timer, like the hazard
+    /// VFX above.
+    void AppendAbilityPulseSprites(std::vector<Sprite>& frameSprites) const;
+
+    /// One in-flight Bishop/Queen pulse.
+    ///
+    /// Holds where the ability fired and where each prop it destroyed used
+    /// to stand, so the effect can mark both. Positions are copied rather
+    /// than pointed at precisely because the obstacles they came from no
+    /// longer exist by the time this is drawn.
+    struct AbilityPulse
+    {
+        glm::vec3 origin = glm::vec3(0.0f);
+
+        std::vector<glm::vec3> clearedPositions;
+
+        float elapsed = 0.0f;
+    };
 
     std::shared_ptr<Camera3D> camera;
 
@@ -267,4 +319,8 @@ private:
     /// Stationary props placed on the SpikeMud and FenceTree lanes. The same
     /// instances are rendered and supplied to HazardCollision.
     std::vector<std::shared_ptr<StaticObstacle>> stationaryHazards;
+
+    /// Bishop/Queen clearing pulses currently playing. More than one can be
+    /// live at a time if the ability is used again before the last finished.
+    std::vector<AbilityPulse> abilityPulses;
 };

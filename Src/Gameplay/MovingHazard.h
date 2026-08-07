@@ -182,10 +182,17 @@ public:
 
     float GetStrikeDuration() const;
 
-    /// Progress for curved projectiles such as fireballs.
+    /// Progress for curved projectiles such as spears.
     float GetCurveElapsed() const;
 
     float GetCurveDuration() const;
+
+    /// Progress for lobbed projectiles such as fireballs. Lets an effect
+    /// pick an animation frame from how far through its flight the
+    /// projectile is, without duplicating the trajectory maths.
+    float GetArcElapsed() const;
+
+    float GetArcDuration() const;
 
     /// Progress for temporary zones such as the fireball's lingering impact.
     float GetZoneElapsed() const;

@@ -76,6 +76,32 @@ const char* GetHazardTypeName(HazardType type)
     return "Unknown";
 }
 
+bool IsAbilityClearable(ObstacleType type)
+{
+    switch (type)
+    {
+        // Everything the level actually stands still on the field.
+    case ObstacleType::Tree:
+    case ObstacleType::Rock:
+    case ObstacleType::Fence:
+    case ObstacleType::Wall:
+    case ObstacleType::Bush:
+    case ObstacleType::Spikes:
+    case ObstacleType::Mud:
+    case ObstacleType::Palisade:
+        return true;
+
+        // Moves under its own steam - see the note in Obstacle.h.
+    case ObstacleType::Cow:
+        return false;
+    }
+
+    // Listed exhaustively above rather than defaulted, so adding a prop to
+    // ObstacleType produces a compiler warning here and someone has to
+    // decide which side of the rule it falls on.
+    return false;
+}
+
 StaticObstacle::StaticObstacle(ObstacleType type)
     : type(type)
 {
@@ -84,6 +110,16 @@ StaticObstacle::StaticObstacle(ObstacleType type)
 ObstacleType StaticObstacle::GetType() const
 {
     return type;
+}
+
+void StaticObstacle::SetStructural(bool structuralValue)
+{
+    structural = structuralValue;
+}
+
+bool StaticObstacle::IsStructural() const
+{
+    return structural;
 }
 
 const char* StaticObstacle::GetName() const

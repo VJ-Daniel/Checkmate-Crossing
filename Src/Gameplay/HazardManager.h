@@ -92,18 +92,33 @@ public:
         const glm::vec3& startGroundPosition,
         float maxSpeed);
 
-    /// Removes up to `count` of the active hazards nearest to position.
-    /// Used by the pawn's Bishop ability.
+    /// Removes up to `maxCount` of the stationary props nearest to origin,
+    /// ignoring any that lie further away than radius. Used by the pawn's
+    /// Bishop ability, and through it the Queen's.
     ///
-    /// NOTE(Ayub): the GDD's Bishop/Queen "breakable obstacles" are
-    /// specifically Fencing and Palisade -- stationary props that don't
-    /// have a placement system yet (Liyuu) or breakability rules yet
-    /// (Kaung). This operates on active moving hazards instead, since
-    /// that's what this class actually owns today. Redirect or extend
-    /// this once those other systems exist.
+    /// Only types IsAbilityClearable() accepts are eligible, so the cow is
+    /// skipped along with every moving hazard. Nothing this class owns is
+    /// touched: the ability is explicitly not allowed to delete projectiles
+    /// (see the rule in Obstacle.h).
     ///
-    /// Returns how many were actually removed (may be less than count).
-    int RemoveNearest(const glm::vec3& position, int count);
+    /// This used to remove the nearest MOVING hazards instead, which was
+    /// always a stand-in - the GDD's Bishop breaks "breakable obstacles",
+    /// and the original note here asked for exactly this redirect once the
+    /// props had a real placement system. They do now (Game owns them), so
+    /// the obstacles are passed in rather than being reached for: this
+    /// class still owns only movement.
+    ///
+    /// Cleared ground positions are appended to clearedPositions so the
+    /// caller can show the player what was destroyed without this function
+    /// knowing anything about rendering.
+    ///
+    /// Returns how many were actually removed (may be fewer than maxCount).
+    static int ClearStationaryObstacles(
+        std::vector<std::shared_ptr<StaticObstacle>>& obstacles,
+        const glm::vec3& origin,
+        float radius,
+        int maxCount,
+        std::vector<glm::vec3>& clearedPositions);
 
     /// Registers a hazard-spawning callback that fires once immediately
     /// and then repeats every interval seconds -- this is what actually
