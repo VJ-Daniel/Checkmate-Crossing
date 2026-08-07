@@ -286,6 +286,16 @@ private:
     /// timer down every frame. Called once per Update.
     void UpdateGameOver(float deltaTime);
 
+    //---------------------------------------------------------
+    // Victory
+    //---------------------------------------------------------
+
+    /// Once (and only once) per run, checks whether the pawn has reached
+    /// the King inside the cage and, if so, latches hasWon and starts the
+    /// victory banner timer. Also ages that timer down every frame. Called
+    /// once per Update.
+    void UpdateVictory(float deltaTime);
+
     /// Ages every dying prop, shrinking and fading it, and drops the ones
     /// whose reaction has finished.
     void UpdateDyingObstacles(float deltaTime);
@@ -408,6 +418,19 @@ private:
     /// Over fires. The reset itself already happened; this only times how
     /// long the banner stays on screen.
     float gameOverBannerTimer = 0.0f;
+
+    /// True the instant the pawn reaches the King. Latched, not reset --
+    /// unlike Game Over, Victory is a terminal, one-shot event.
+    bool hasWon = false;
+
+    /// Counts down from GameConfig::VictoryBannerDuration once Victory
+    /// fires.
+    float victoryBannerTimer = 0.0f;
+
+    /// Counts down from GameConfig::ControlsScreenDuration, starting the
+    /// instant Initialize sets it -- no trigger condition, it just plays
+    /// out once at the start of every run.
+    float controlsScreenTimer = 0.0f;
 
     /// Resolves moving hazards and the real stationary level props against
     /// the pawn every frame.

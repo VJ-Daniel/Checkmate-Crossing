@@ -490,6 +490,31 @@ namespace GameConfig
     constexpr float GameOverBannerDuration = 2.0f;
 
     //---------------------------------------------------------
+    // Victory
+    //
+    // Triggers once, the instant the pawn reaches the King inside the
+    // (opened) King's Cage. A one-shot terminal state, unlike Game Over --
+    // nothing resets and it never fires twice in one run.
+    //---------------------------------------------------------
+
+    /// How close the pawn needs to be to the King to count as "got him".
+    constexpr float KingRescueRadius = 1.0f;
+
+    /// Same duration as the Game Over banner, for the same reason: gameplay
+    /// isn't paused while it's up, this is purely feedback.
+    constexpr float VictoryBannerDuration = 2.0f;
+
+    //---------------------------------------------------------
+    // Controls screen
+    //
+    // A brief key-icon reminder shown for the first few seconds of a run.
+    // No text rendering exists, so this leans entirely on the keycap art
+    // (WASD/Space/E) being self-explanatory.
+    //---------------------------------------------------------
+
+    constexpr float ControlsScreenDuration = 4.0f;
+
+    //---------------------------------------------------------
     // HUD
     //
     // Pixel layout for the always-on-screen HUD. All Screen-mode sprites
@@ -541,6 +566,24 @@ namespace GameConfig
     /// PNG's ~4.4:1 aspect so it doesn't stretch.
     constexpr float HudGameOverTextWidth = 200.0f;
     constexpr float HudGameOverTextHeight = 46.0f;
+
+    /// Victory banner (screen-centred) and its text -- same construction as
+    /// the Game Over banner, different frame art/tint/text so the two never
+    /// read as the same event.
+    constexpr float HudVictoryBannerSize = 240.0f;
+    inline const glm::vec3 HudVictoryBannerTint = glm::vec3(0.85f, 0.68f, 0.15f);
+    constexpr float HudVictoryTextWidth = 190.0f;
+    constexpr float HudVictoryTextHeight = 56.0f;
+
+    /// Controls screen: a row of keycap icons (WASD diamond, then Space,
+    /// then E), centred on screen with a light dimming overlay -- lighter
+    /// than the Game Over/Victory overlay since this isn't a dramatic
+    /// event, just a reminder shown over the start of normal gameplay.
+    constexpr float HudControlsKeySize = 48.0f;
+    constexpr float HudControlsKeyGap = 8.0f;
+    constexpr float HudControlsGroupGap = 24.0f;
+    inline const glm::vec3 HudControlsOverlayTint = glm::vec3(0.0f, 0.0f, 0.0f);
+    constexpr float HudControlsOverlayOpacity = 0.35f;
 
     /// Shared pip/bar tints, multiplied onto the white placeholder texture.
     inline const glm::vec3 HudFilledTint = glm::vec3(0.85f, 0.68f, 0.15f);
