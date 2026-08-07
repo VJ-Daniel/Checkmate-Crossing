@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <unordered_map>
 
 #include "GameConfig.h"
 #include "ResourceManager.h"
@@ -221,6 +222,11 @@ bool Game::Initialize(
 
     spriteRenderer->SetScreenSize(screenWidth, screenHeight);
 
+    hudScreenWidth = screenWidth;
+    hudScreenHeight = screenHeight;
+
+    controlsScreenTimer = GameConfig::ControlsScreenDuration;
+
     // 1. Create the libraries FIRST before anything else uses them.
     pieceMeshes = std::make_shared<PieceMeshLibrary>();
 
@@ -230,6 +236,7 @@ bool Game::Initialize(
 
     LoadLightningSprites();
     LoadFireballSprites();
+    LoadHudSprites();
 
     // 2. Build the level
     level = std::make_shared<Level>();
@@ -359,6 +366,7 @@ void Game::BuildCheckpointGate()
 
     checkpointGates.clear();
     checkpointGateOpening.clear();
+    checkpointGateActivated.clear();
 
     for (int row : level->FindRowsOfType(LaneType::Checkpoint))
     {
@@ -427,6 +435,7 @@ void Game::BuildCheckpointGate()
 
         checkpointGates.push_back(gate);
         checkpointGateOpening.push_back(false);
+        checkpointGateActivated.push_back(false);
     }
 }
 void Game::BuildKingsCage()
@@ -1408,6 +1417,105 @@ void Game::LoadFireballSprites()
         "Src/Assets/Sprites/Warning/soft_circle.png");
 }
 
+void Game::LoadHudSprites()
+{
+    // Health pip -- a heart. Tinted red when filled, dim grey when empty.
+    ResourceManager::LoadTexture(
+        "hud_pip_square",
+        "Src/Assets/Sprites/UI/hud_pip_square.png");
+
+    // Checkpoint pip -- its own marker, distinct from the health heart.
+    // Tinted per use, same as the health pip.
+    ResourceManager::LoadTexture(
+        "hud_checkpoint_pip",
+        "Src/Assets/Sprites/UI/hud_checkpoint_pip.png");
+
+    // Ability duration bar background/fill -- a plain square. A heart (or
+    // any non-rectangular icon) stretched into a thin bar reads as broken,
+    // so this stays its own flat placeholder rather than reusing an icon.
+    ResourceManager::LoadTexture(
+        "hud_bar_fill",
+        "Src/Assets/Sprites/UI/hud_bar_fill.png");
+
+    // Ability indicator: one universal icon regardless of which piece
+    // granted the ability. The current-piece icon already shows which
+    // piece is involved, so this slot just has to read as "ability
+    // ready/active" at a glance.
+    ResourceManager::LoadTexture(
+        "hud_icon_ability",
+        "Src/Assets/Sprites/UI/hud_icon_ability.png");
+
+    // Interact prompt, shown near the pawn while it's in range of a gate
+    // or the King's Cage.
+    ResourceManager::LoadTexture(
+        "hud_interact_prompt",
+        "Src/Assets/Sprites/UI/hud_interact_prompt.png");
+
+    // Game Over banner frame, shown briefly after the 3rd death. Tinted at
+    // draw time (GameConfig::HudGameOverBannerTint) rather than baked red,
+    // so the source art stays a neutral, reusable frame.
+    ResourceManager::LoadTexture(
+        "hud_game_over",
+        "Src/Assets/Sprites/UI/hud_game_over.png");
+
+    // "GAME OVER" text, drawn on top of the frame above. Pre-rendered with
+    // its own baked color (gold fill, dark stroke), not tinted, so it stays
+    // legible regardless of the frame's tint.
+    ResourceManager::LoadTexture(
+        "hud_game_over_text",
+        "Src/Assets/Sprites/UI/hud_game_over_text.png");
+
+    // Victory banner frame + text, shown once when the pawn reaches the
+    // King. Same construction as the Game Over banner, different art/tint
+    // so the two never read as the same event.
+    ResourceManager::LoadTexture(
+        "hud_victory",
+        "Src/Assets/Sprites/UI/hud_victory.png");
+
+    ResourceManager::LoadTexture(
+        "hud_victory_text",
+        "Src/Assets/Sprites/UI/hud_victory_text.png");
+
+    // Controls screen keycaps (WASD + Space). E reuses hud_interact_prompt
+    // above rather than a separate texture.
+    ResourceManager::LoadTexture(
+        "hud_key_w", "Src/Assets/Sprites/UI/keyboard_w.png");
+    ResourceManager::LoadTexture(
+        "hud_key_a", "Src/Assets/Sprites/UI/keyboard_a.png");
+    ResourceManager::LoadTexture(
+        "hud_key_s", "Src/Assets/Sprites/UI/keyboard_s.png");
+    ResourceManager::LoadTexture(
+        "hud_key_d", "Src/Assets/Sprites/UI/keyboard_d.png");
+    ResourceManager::LoadTexture(
+        "hud_key_space", "Src/Assets/Sprites/UI/keyboard_space.png");
+
+    // One silhouette per PieceType, used by the current-piece indicator.
+    for (int i = 0; i < PieceTypeCount; ++i)
+    {
+        const PieceType type = PieceTypeFromIndex(i);
+
+        ResourceManager::LoadTexture(
+            PieceIconTextureName(type),
+            std::string("Src/Assets/Sprites/UI/") +
+                PieceIconTextureName(type) + ".png");
+    }
+}
+
+const std::string& Game::PieceIconTextureName(PieceType type)
+{
+    static const std::unordered_map<PieceType, std::string> names = {
+        { PieceType::Pawn,        "hud_icon_Pawn" },
+        { PieceType::Rook,        "hud_icon_Rook" },
+        { PieceType::Knight,      "hud_icon_Knight" },
+        { PieceType::Bishop,      "hud_icon_Bishop" },
+        { PieceType::Queen,       "hud_icon_Queen" },
+        { PieceType::King,        "hud_icon_King" },
+        { PieceType::MountedPawn, "hud_icon_MountedPawn" },
+    };
+
+    return names.at(type);
+}
+
 void Game::AppendLightningSprites(std::vector<Sprite>& frameSprites) const
 {
     if (!hazardManager)
@@ -2068,6 +2176,361 @@ void Game::AppendAbilityPulseSprites(std::vector<Sprite>& frameSprites) const
     }
 }
 
+void Game::AppendHudSprites(std::vector<Sprite>& frameSprites) const
+{
+    if (!pawn)
+        return;
+
+    constexpr int LayerBack = 200;
+    constexpr int LayerFill = 201;
+    constexpr int LayerIcon = 202;
+
+    // ---- Health pips (top-left) ----
+    {
+        const int maxPips = static_cast<int>(GameConfig::MaxPawnHealth);
+        const int filledPips = static_cast<int>(std::round(pawn->GetHealth()));
+
+        for (int i = 0; i < maxPips; ++i)
+        {
+            Sprite pip = Sprite::CreateScreen(
+                "hud_pip_square",
+                glm::vec2(
+                    GameConfig::HudMargin +
+                        GameConfig::HudHealthPipSize * 0.5f +
+                        i * (GameConfig::HudHealthPipSize +
+                            GameConfig::HudHealthPipSpacing),
+                    GameConfig::HudMargin +
+                        GameConfig::HudHealthPipSize * 0.5f),
+                glm::vec2(
+                    GameConfig::HudHealthPipSize,
+                    GameConfig::HudHealthPipSize));
+
+            pip.tint = (i < filledPips)
+                ? GameConfig::HudHealthFilledTint
+                : GameConfig::HudEmptyTint;
+            pip.layer = LayerFill;
+
+            frameSprites.push_back(pip);
+        }
+    }
+
+    // ---- Checkpoint pips (top-centre) ----
+    {
+        const int pipCount = static_cast<int>(checkpointGates.size());
+        const float totalWidth =
+            pipCount * GameConfig::HudCheckpointPipSize +
+            std::max(0, pipCount - 1) * GameConfig::HudCheckpointPipSpacing;
+        const float startX = hudScreenWidth * 0.5f - totalWidth * 0.5f;
+
+        for (int i = 0; i < pipCount; ++i)
+        {
+            Sprite pip = Sprite::CreateScreen(
+                "hud_checkpoint_pip",
+                glm::vec2(
+                    startX +
+                        GameConfig::HudCheckpointPipSize * 0.5f +
+                        i * (GameConfig::HudCheckpointPipSize +
+                            GameConfig::HudCheckpointPipSpacing),
+                    GameConfig::HudMargin +
+                        GameConfig::HudCheckpointPipSize * 0.5f),
+                glm::vec2(
+                    GameConfig::HudCheckpointPipSize,
+                    GameConfig::HudCheckpointPipSize));
+
+            const bool activated =
+                i < static_cast<int>(checkpointGateActivated.size()) &&
+                checkpointGateActivated[i];
+
+            pip.tint = activated
+                ? GameConfig::HudFilledTint
+                : GameConfig::HudEmptyTint;
+            pip.layer = LayerFill;
+
+            frameSprites.push_back(pip);
+        }
+    }
+
+    // ---- Ability icon + duration bar (top-right) ----
+    {
+        const glm::vec2 iconCenter(
+            hudScreenWidth - GameConfig::HudMargin -
+                GameConfig::HudAbilityIconSize * 0.5f,
+            GameConfig::HudMargin +
+                GameConfig::HudAbilityIconSize * 0.5f);
+
+        // One universal icon whenever an ability is banked or active --
+        // which piece granted it is already shown by the current-piece
+        // icon below, so this slot just needs to read as "ability ready".
+        const bool haveAbility =
+            pawn->IsAbilityActive() || pawn->HasStoredPiece();
+
+        if (haveAbility)
+        {
+            Sprite icon = Sprite::CreateScreen(
+                "hud_icon_ability",
+                iconCenter,
+                glm::vec2(
+                    GameConfig::HudAbilityIconSize,
+                    GameConfig::HudAbilityIconSize));
+
+            icon.layer = LayerIcon;
+            frameSprites.push_back(icon);
+        }
+
+        // Duration bar only while a timed ability is actually running --
+        // GetAbilityDurationFraction() is 0 for Bishop, whose effect is
+        // instant, so its icon appears with no bar under it.
+        const float fraction = pawn->GetAbilityDurationFraction();
+
+        if (fraction > 0.0f)
+        {
+            const glm::vec2 barCenter(
+                iconCenter.x,
+                iconCenter.y +
+                    GameConfig::HudAbilityIconSize * 0.5f +
+                    GameConfig::HudAbilityBarGap +
+                    GameConfig::HudAbilityBarHeight * 0.5f);
+
+            Sprite back = Sprite::CreateScreen(
+                "hud_bar_fill",
+                barCenter,
+                glm::vec2(
+                    GameConfig::HudAbilityBarWidth,
+                    GameConfig::HudAbilityBarHeight));
+
+            back.tint = GameConfig::HudBarBackTint;
+            back.layer = LayerBack;
+            frameSprites.push_back(back);
+
+            // Left-anchored fill: shrink the quad and re-centre it so it
+            // drains from right to left as the ability runs out, rather
+            // than shrinking from the centre outward.
+            const float fillWidth = GameConfig::HudAbilityBarWidth * fraction;
+
+            Sprite fill = Sprite::CreateScreen(
+                "hud_bar_fill",
+                glm::vec2(
+                    barCenter.x -
+                        GameConfig::HudAbilityBarWidth * 0.5f +
+                        fillWidth * 0.5f,
+                    barCenter.y),
+                glm::vec2(fillWidth, GameConfig::HudAbilityBarHeight));
+
+            fill.tint = GameConfig::HudFilledTint;
+            fill.layer = LayerFill;
+            frameSprites.push_back(fill);
+        }
+    }
+
+    // ---- Current piece icon (bottom-centre) ----
+    {
+        Sprite icon = Sprite::CreateScreen(
+            PieceIconTextureName(pawn->GetCharacter()),
+            glm::vec2(
+                hudScreenWidth * 0.5f,
+                hudScreenHeight - GameConfig::HudMargin -
+                    GameConfig::HudPieceIconSize * 0.5f),
+            glm::vec2(
+                GameConfig::HudPieceIconSize,
+                GameConfig::HudPieceIconSize));
+
+        icon.layer = LayerIcon;
+        frameSprites.push_back(icon);
+    }
+
+    // ---- Interact prompt (centred, above the piece icon) ----
+    if (IsNearInteractable(pawn->GetTransform().GetPosition()))
+    {
+        Sprite prompt = Sprite::CreateScreen(
+            "hud_interact_prompt",
+            glm::vec2(
+                hudScreenWidth * 0.5f,
+                hudScreenHeight - GameConfig::HudMargin -
+                    GameConfig::HudPieceIconSize -
+                    GameConfig::HudInteractPromptGap -
+                    GameConfig::HudInteractPromptSize * 0.5f),
+            glm::vec2(
+                GameConfig::HudInteractPromptSize,
+                GameConfig::HudInteractPromptSize));
+
+        prompt.layer = LayerIcon;
+        frameSprites.push_back(prompt);
+    }
+
+    // ---- Game Over banner (screen-centred, on top of everything) ----
+    if (gameOverBannerTimer > 0.0f)
+    {
+        constexpr int LayerGameOverOverlay = 210;
+        constexpr int LayerGameOverBanner = 211;
+        constexpr int LayerGameOverText = 212;
+
+        // Dim the world behind the banner so it reads clearly against
+        // whatever's on screen underneath.
+        Sprite overlay = Sprite::CreateScreen(
+            "hud_bar_fill",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(hudScreenWidth, hudScreenHeight));
+
+        overlay.tint = GameConfig::HudGameOverOverlayTint;
+        overlay.opacity = GameConfig::HudGameOverOverlayOpacity;
+        overlay.layer = LayerGameOverOverlay;
+        frameSprites.push_back(overlay);
+
+        Sprite banner = Sprite::CreateScreen(
+            "hud_game_over",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(
+                GameConfig::HudGameOverBannerSize,
+                GameConfig::HudGameOverBannerSize));
+
+        banner.tint = GameConfig::HudGameOverBannerTint;
+        banner.layer = LayerGameOverBanner;
+        frameSprites.push_back(banner);
+
+        Sprite text = Sprite::CreateScreen(
+            "hud_game_over_text",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(
+                GameConfig::HudGameOverTextWidth,
+                GameConfig::HudGameOverTextHeight));
+
+        text.layer = LayerGameOverText;
+        frameSprites.push_back(text);
+    }
+
+    // ---- Victory banner (screen-centred, on top of everything) ----
+    if (victoryBannerTimer > 0.0f)
+    {
+        constexpr int LayerVictoryOverlay = 220;
+        constexpr int LayerVictoryBanner = 221;
+        constexpr int LayerVictoryText = 222;
+
+        Sprite overlay = Sprite::CreateScreen(
+            "hud_bar_fill",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(hudScreenWidth, hudScreenHeight));
+
+        overlay.tint = GameConfig::HudGameOverOverlayTint;
+        overlay.opacity = GameConfig::HudGameOverOverlayOpacity;
+        overlay.layer = LayerVictoryOverlay;
+        frameSprites.push_back(overlay);
+
+        Sprite banner = Sprite::CreateScreen(
+            "hud_victory",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(
+                GameConfig::HudVictoryBannerSize,
+                GameConfig::HudVictoryBannerSize));
+
+        banner.tint = GameConfig::HudVictoryBannerTint;
+        banner.layer = LayerVictoryBanner;
+        frameSprites.push_back(banner);
+
+        Sprite text = Sprite::CreateScreen(
+            "hud_victory_text",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(
+                GameConfig::HudVictoryTextWidth,
+                GameConfig::HudVictoryTextHeight));
+
+        text.layer = LayerVictoryText;
+        frameSprites.push_back(text);
+    }
+
+    // ---- Controls screen (screen-centred, first few seconds of a run) ----
+    if (controlsScreenTimer > 0.0f)
+    {
+        constexpr int LayerControlsOverlay = 230;
+        constexpr int LayerControlsKeys = 231;
+
+        Sprite overlay = Sprite::CreateScreen(
+            "hud_bar_fill",
+            glm::vec2(hudScreenWidth * 0.5f, hudScreenHeight * 0.5f),
+            glm::vec2(hudScreenWidth, hudScreenHeight));
+
+        overlay.tint = GameConfig::HudControlsOverlayTint;
+        overlay.opacity = GameConfig::HudControlsOverlayOpacity;
+        overlay.layer = LayerControlsOverlay;
+        frameSprites.push_back(overlay);
+
+        const float key = GameConfig::HudControlsKeySize;
+        const float gap = GameConfig::HudControlsKeyGap;
+        const float groupGap = GameConfig::HudControlsGroupGap;
+
+        // WASD diamond: S is the reference point, A/D flank it, W sits
+        // above. Space and E sit to the right, vertically centred on the
+        // A/S/D row.
+        const float totalWidth =
+            (key + gap) * 3 + groupGap + key + groupGap + key;
+
+        const float clusterLeft = hudScreenWidth * 0.5f - totalWidth * 0.5f;
+        const float rowY = hudScreenHeight * 0.5f;
+
+        const glm::vec2 sPos(clusterLeft + key + gap + key * 0.5f, rowY);
+        const glm::vec2 aPos(sPos.x - (key + gap), rowY);
+        const glm::vec2 dPos(sPos.x + (key + gap), rowY);
+        const glm::vec2 wPos(sPos.x, rowY - (key + gap));
+
+        const glm::vec2 keySize(key, key);
+
+        Sprite wKey = Sprite::CreateScreen("hud_key_w", wPos, keySize);
+        wKey.layer = LayerControlsKeys;
+        frameSprites.push_back(wKey);
+
+        Sprite aKey = Sprite::CreateScreen("hud_key_a", aPos, keySize);
+        aKey.layer = LayerControlsKeys;
+        frameSprites.push_back(aKey);
+
+        Sprite sKey = Sprite::CreateScreen("hud_key_s", sPos, keySize);
+        sKey.layer = LayerControlsKeys;
+        frameSprites.push_back(sKey);
+
+        Sprite dKey = Sprite::CreateScreen("hud_key_d", dPos, keySize);
+        dKey.layer = LayerControlsKeys;
+        frameSprites.push_back(dKey);
+
+        const float spaceX = dPos.x + key * 0.5f + groupGap + key * 0.5f;
+        const glm::vec2 spacePos(spaceX, rowY);
+
+        Sprite spaceKey = Sprite::CreateScreen(
+            "hud_key_space", spacePos, keySize);
+        spaceKey.layer = LayerControlsKeys;
+        frameSprites.push_back(spaceKey);
+
+        const float ePosX = spaceX + key * 0.5f + groupGap + key * 0.5f;
+        const glm::vec2 ePos(ePosX, rowY);
+
+        Sprite eKey = Sprite::CreateScreen(
+            "hud_interact_prompt", ePos, keySize);
+        eKey.layer = LayerControlsKeys;
+        frameSprites.push_back(eKey);
+    }
+}
+
+bool Game::IsNearInteractable(const glm::vec3& pawnPosition) const
+{
+    for (const auto& gate : checkpointGates)
+    {
+        if (!gate)
+            continue;
+
+        if (glm::length(pawnPosition - gate->GetGroundPosition()) <=
+            GameConfig::InteractRadius)
+        {
+            return true;
+        }
+    }
+
+    if (kingsCage &&
+        glm::length(pawnPosition - kingsCage->GetGroundPosition()) <=
+            GameConfig::InteractRadius)
+    {
+        return true;
+    }
+
+    return false;
+}
+
 void Game::UpdateCamera()
 {
     if (!camera || !pawn)
@@ -2162,6 +2625,8 @@ bool Game::TryInteractWithCheckpointGate(const glm::vec3& pawnPosition)
         if (gate->GetDoorAngle() < CheckpointGate::GetMaxDoorAngle())
             checkpointGateOpening[i] = true;
 
+        checkpointGateActivated[i] = true;
+
         // Reaching a checkpoint at all activates it, even if E only
         // re-opens an already-open gate: a later respawn should return
         // here, not to whichever checkpoint was activated before it.
@@ -2239,6 +2704,97 @@ void Game::UpdateDoors(float deltaTime)
                 kingsCageDoorOpening = false;
         }
     }
+}
+
+void Game::UpdateGameOver(float deltaTime)
+{
+    if (gameOverBannerTimer > 0.0f)
+        gameOverBannerTimer = std::max(0.0f, gameOverBannerTimer - deltaTime);
+
+    if (!pawn || !pawn->ConsumeDeathPulse())
+        return;
+
+    ++deathCount;
+
+    if (deathCount < GameConfig::MaxDeathsBeforeGameOver)
+        return;
+
+    // Game Over: harsher than a normal death. Clear checkpoint progress and
+    // send the pawn all the way back to the level's initial spawn point,
+    // not whichever checkpoint it had most recently banked -- otherwise the
+    // very next death would undo this reset immediately.
+    deathCount = 0;
+    gameOverBannerTimer = GameConfig::GameOverBannerDuration;
+
+    std::fill(
+        checkpointGateActivated.begin(),
+        checkpointGateActivated.end(),
+        false);
+
+    if (level)
+    {
+        pawn->SetSpawnPosition(level->GetPlayerSpawnPosition());
+        pawn->Respawn();
+    }
+}
+
+void Game::UpdateVictory(float deltaTime)
+{
+    if (victoryBannerTimer > 0.0f)
+    {
+        victoryBannerTimer = std::max(0.0f, victoryBannerTimer - deltaTime);
+
+        // Reset back to the start the instant the banner finishes -- same
+        // scope as Game Over (checkpoints clear, deaths clear, pawn goes
+        // back to the level's initial spawn) plus re-locking the cage,
+        // since that's specific to what Victory itself requires. Clearing
+        // hasWon makes the whole thing repeatable, exactly like Game Over.
+        if (victoryBannerTimer <= 0.0f && hasWon)
+        {
+            hasWon = false;
+            deathCount = 0;
+
+            std::fill(
+                checkpointGateActivated.begin(),
+                checkpointGateActivated.end(),
+                false);
+
+            kingsCageDoorAngle = 0.0f;
+            kingsCageDoorOpening = false;
+
+            if (kingsCage)
+            {
+                if (WorldObject* leftDoor = kingsCage->GetLeftDoor())
+                    leftDoor->GetTransform().SetRotation(0.0f, 0.0f, 0.0f);
+
+                if (WorldObject* rightDoor = kingsCage->GetRightDoor())
+                    rightDoor->GetTransform().SetRotation(0.0f, 0.0f, 0.0f);
+            }
+
+            if (level && pawn)
+            {
+                pawn->SetSpawnPosition(level->GetPlayerSpawnPosition());
+                pawn->Respawn();
+            }
+        }
+    }
+
+    if (hasWon || !pawn || !capturedKing)
+        return;
+
+    // The cage has to actually be opened first -- otherwise walking near a
+    // still-locked cage would count as "getting the king".
+    if (kingsCageDoorAngle < GameConfig::KingsCageMaxDoorAngle)
+        return;
+
+    const float distance = glm::length(
+        pawn->GetTransform().GetPosition() - capturedKing->GetGroundPosition());
+
+    if (distance > GameConfig::KingRescueRadius)
+        return;
+
+    hasWon = true;
+    victoryBannerTimer = GameConfig::VictoryBannerDuration;
 }
 
 void Game::Update(float deltaTime)
@@ -2327,22 +2883,38 @@ void Game::Update(float deltaTime)
     UpdateDyingObstacles(deltaTime);
 
     // E's target isn't decided inside Pawn (see ConsumeInteractPulse) --
-    // resolve it here against whatever's actually in the level: the
-    // checkpoint gate, then the king's cage door, then finally the pawn's
-    // own banked ability if neither was in range.
+    // resolve it here against whatever's actually in the level: the king's
+    // cage door, then the checkpoint gate, then finally the pawn's own
+    // banked ability if neither was in range.
+    //
+    // Cage before checkpoint deliberately: the 3rd checkpoint sits only
+    // 1.5 units from the cage (InteractRadius is 1.6), so the two ranges
+    // overlap. Re-triggering an already-open checkpoint is a harmless
+    // no-op; missing the cage because the checkpoint claimed the press
+    // first made the win condition unreachable from most approach angles.
     if (pawn && pawn->ConsumeInteractPulse())
     {
         const glm::vec3 pawnPosition = pawn->GetTransform().GetPosition();
 
         const bool interactedWithWorld =
-            TryInteractWithCheckpointGate(pawnPosition) ||
-            TryInteractWithKingsCage(pawnPosition);
+            TryInteractWithKingsCage(pawnPosition) ||
+            TryInteractWithCheckpointGate(pawnPosition);
 
         if (!interactedWithWorld)
             pawn->TryActivateAbility();
     }
 
     UpdateDoors(deltaTime);
+
+    // After collision resolution (where a death this frame would have
+    // happened) and before the camera, so a Game Over's reset position is
+    // what the camera follows this same frame rather than lagging a frame
+    // behind.
+    UpdateGameOver(deltaTime);
+    UpdateVictory(deltaTime);
+
+    if (controlsScreenTimer > 0.0f)
+        controlsScreenTimer = std::max(0.0f, controlsScreenTimer - deltaTime);
 
     UpdateCamera();
 }
@@ -2534,6 +3106,7 @@ void Game::Render()
     AppendFireballSprites(frameSprites);
     AppendSpearSprites(frameSprites);
     AppendAbilityPulseSprites(frameSprites);
+    AppendHudSprites(frameSprites);
 
     if (spriteRenderer)
         spriteRenderer->DrawAll(frameSprites);
@@ -2574,6 +3147,9 @@ std::size_t Game::GetSpriteCount() const
 
 void Game::SetViewportSize(float width, float height)
 {
+    hudScreenWidth = width;
+    hudScreenHeight = height;
+
     if (camera)
         camera->SetViewport(width, height);
 
@@ -2670,6 +3246,14 @@ CheckpointGate* Game::GetCheckpointGate()
 const std::vector<std::shared_ptr<CheckpointGate>>& Game::GetCheckpointGates() const
 {
     return checkpointGates;
+}
+
+int Game::GetActivatedCheckpointCount() const
+{
+    return static_cast<int>(std::count(
+        checkpointGateActivated.begin(),
+        checkpointGateActivated.end(),
+        true));
 }
 
 KingsCage* Game::GetKingsCage()

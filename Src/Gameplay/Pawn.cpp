@@ -17,6 +17,7 @@
 
 #include "Pawn.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream> // Added for debug output
 
@@ -621,6 +622,34 @@ PieceType Pawn::GetActiveAbilityType() const
     return activeAbilityType;
 }
 
+float Pawn::GetAbilityDurationFraction() const
+{
+    if (!abilityActive)
+        return 0.0f;
+
+    float maxDuration = 0.0f;
+
+    switch (activeAbilityType)
+    {
+    case PieceType::Knight:
+        maxDuration = GameConfig::KnightAbilityDuration;
+        break;
+    case PieceType::Rook:
+        maxDuration = GameConfig::RookShieldDuration;
+        break;
+    case PieceType::Queen:
+        maxDuration = GameConfig::QueenAbilityDuration;
+        break;
+    default:
+        return 0.0f;
+    }
+
+    if (maxDuration <= 0.0f)
+        return 0.0f;
+
+    return std::clamp(abilityTimeRemaining / maxDuration, 0.0f, 1.0f);
+}
+
 float Pawn::GetSpeedMultiplier() const
 {
     if (abilityActive &&
@@ -668,6 +697,15 @@ bool Pawn::ConsumeBishopActivationPulse()
         return false;
 
     bishopPulsePending = false;
+    return true;
+}
+
+bool Pawn::ConsumeDeathPulse()
+{
+    if (!deathPulsePending)
+        return false;
+
+    deathPulsePending = false;
     return true;
 }
 
@@ -737,7 +775,7 @@ void Pawn::Respawn()
         spawnPosition.z);
 
     // --- RESET HEALTH ON RESPAWN ---
-    health = 5.0f;
+    health = GameConfig::MaxPawnHealth;
     // --- CLEAR KNOCKBACK ---
     velocity = glm::vec3(0.0f);
     knockbackTimer = 0.0f;
@@ -784,6 +822,7 @@ void Pawn::TakeDamage(float damage)
     {
         health = 0.0f;
         std::cout << "Pawn has died! Respawning..." << std::endl;
+        deathPulsePending = true;
         Respawn();
     }
 }

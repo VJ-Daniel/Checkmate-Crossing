@@ -578,5 +578,135 @@ namespace GameConfig
     /// contact, and is meant to lose them ground while they walk out of it,
     /// not to fling them.
     constexpr float SheepPushStrength = 2.6f;
+
+    //---------------------------------------------------------
+    // Pawn health
+    //---------------------------------------------------------
+
+    /// Pawn's maximum HP. Single source of truth so the HUD's health pips
+    /// and Pawn's own starting health can't drift apart.
+    constexpr float MaxPawnHealth = 5.0f;
+
+    //---------------------------------------------------------
+    // Game over
+    //
+    // Death already respawns the pawn at its most recent checkpoint (or
+    // the level start, if none yet) -- see Pawn::TakeDamage/Respawn. This
+    // is the harsher reset layered on top: too many deaths sends the
+    // player all the way back to the level's initial spawn point and
+    // clears checkpoint progress, not just the pawn's own position.
+    //---------------------------------------------------------
+
+    constexpr int MaxDeathsBeforeGameOver = 3;
+
+    /// How long the Game Over banner stays on screen. Gameplay is not
+    /// paused during this window -- the reset already happened the instant
+    /// the death count crossed the threshold, this is purely feedback.
+    constexpr float GameOverBannerDuration = 2.0f;
+
+    //---------------------------------------------------------
+    // Victory
+    //
+    // Triggers once, the instant the pawn reaches the King inside the
+    // (opened) King's Cage. A one-shot terminal state, unlike Game Over --
+    // nothing resets and it never fires twice in one run.
+    //---------------------------------------------------------
+
+    /// How close the pawn needs to be to the King to count as "got him".
+    constexpr float KingRescueRadius = 1.0f;
+
+    /// Same duration as the Game Over banner, for the same reason: gameplay
+    /// isn't paused while it's up, this is purely feedback.
+    constexpr float VictoryBannerDuration = 2.0f;
+
+    //---------------------------------------------------------
+    // Controls screen
+    //
+    // A brief key-icon reminder shown for the first few seconds of a run.
+    // No text rendering exists, so this leans entirely on the keycap art
+    // (WASD/Space/E) being self-explanatory.
+    //---------------------------------------------------------
+
+    constexpr float ControlsScreenDuration = 4.0f;
+
+    //---------------------------------------------------------
+    // HUD
+    //
+    // Pixel layout for the always-on-screen HUD. All Screen-mode sprites
+    // are positioned by their centre, origin at the window's top-left, so
+    // these are expressed as margins from a corner/edge plus element
+    // sizes -- see Game::AppendHudSprites for how they turn into actual
+    // positions at the current window size.
+    //---------------------------------------------------------
+
+    constexpr float HudMargin = 20.0f;
+
+    /// Health pips (top-left).
+    constexpr float HudHealthPipSize = 28.0f;
+    constexpr float HudHealthPipSpacing = 8.0f;
+
+    /// Checkpoint pips (top-centre).
+    constexpr float HudCheckpointPipSize = 24.0f;
+    constexpr float HudCheckpointPipSpacing = 12.0f;
+
+    /// Ability icon + duration bar (top-right).
+    constexpr float HudAbilityIconSize = 48.0f;
+    constexpr float HudAbilityBarWidth = 64.0f;
+    constexpr float HudAbilityBarHeight = 10.0f;
+    constexpr float HudAbilityBarGap = 8.0f;
+
+    /// Current piece icon (bottom-centre).
+    constexpr float HudPieceIconSize = 56.0f;
+
+    /// Interact prompt (centred, above the current piece icon). Shown only
+    /// while the pawn is within InteractRadius of a checkpoint gate or the
+    /// King's Cage.
+    constexpr float HudInteractPromptSize = 40.0f;
+    constexpr float HudInteractPromptGap = 12.0f;
+
+    /// Game Over banner (screen-centred) and the dimming overlay behind it.
+    /// The banner art is a square ornate frame, so this stays square to
+    /// avoid stretching its border out of proportion.
+    constexpr float HudGameOverBannerSize = 240.0f;
+    inline const glm::vec3 HudGameOverOverlayTint = glm::vec3(0.0f, 0.0f, 0.0f);
+    constexpr float HudGameOverOverlayOpacity = 0.55f;
+
+    /// Tints the (currently white) frame art a somber red for the "defeat"
+    /// mood without baking a color into the source asset.
+    inline const glm::vec3 HudGameOverBannerTint = glm::vec3(0.75f, 0.20f, 0.20f);
+
+    /// "GAME OVER" text, rendered once offline (MedievalSharp, gold fill,
+    /// dark stroke) rather than tinted -- it needs to stay legible on top
+    /// of the red frame, not share its color. Sized to match the source
+    /// PNG's ~4.4:1 aspect so it doesn't stretch.
+    constexpr float HudGameOverTextWidth = 200.0f;
+    constexpr float HudGameOverTextHeight = 46.0f;
+
+    /// Victory banner (screen-centred) and its text -- same construction as
+    /// the Game Over banner, different frame art/tint/text so the two never
+    /// read as the same event.
+    constexpr float HudVictoryBannerSize = 240.0f;
+    inline const glm::vec3 HudVictoryBannerTint = glm::vec3(0.85f, 0.68f, 0.15f);
+    constexpr float HudVictoryTextWidth = 190.0f;
+    constexpr float HudVictoryTextHeight = 56.0f;
+
+    /// Controls screen: a row of keycap icons (WASD diamond, then Space,
+    /// then E), centred on screen with a light dimming overlay -- lighter
+    /// than the Game Over/Victory overlay since this isn't a dramatic
+    /// event, just a reminder shown over the start of normal gameplay.
+    constexpr float HudControlsKeySize = 48.0f;
+    constexpr float HudControlsKeyGap = 8.0f;
+    constexpr float HudControlsGroupGap = 24.0f;
+    inline const glm::vec3 HudControlsOverlayTint = glm::vec3(0.0f, 0.0f, 0.0f);
+    constexpr float HudControlsOverlayOpacity = 0.35f;
+
+    /// Shared pip/bar tints, multiplied onto the white placeholder texture.
+    inline const glm::vec3 HudFilledTint = glm::vec3(0.85f, 0.68f, 0.15f);
+    inline const glm::vec3 HudEmptyTint = glm::vec3(0.30f, 0.30f, 0.33f);
+    inline const glm::vec3 HudBarBackTint = glm::vec3(0.15f, 0.15f, 0.18f);
+
+    /// Health pips read better as hearts than gold, so they get their own
+    /// filled tint instead of the shared HudFilledTint.
+    inline const glm::vec3 HudHealthFilledTint = glm::vec3(0.82f, 0.16f, 0.16f);
 }
 
