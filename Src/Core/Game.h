@@ -174,6 +174,52 @@ private:
         bool fromLeft);
 
     //---------------------------------------------------------
+    // Level 1 hazard lanes
+    //
+    // One named call per lane, so BuildLevelHazards reads as a list of what
+    // threatens where rather than as repeated spawn plumbing, and so the
+    // three projectile types stay visibly different from each other at the
+    // call site.
+    //---------------------------------------------------------
+
+    /// An arrow sweeping the full width of a row, on a loop.
+    ///
+    /// Straight, edge to edge, and never stops - the readable baseline the
+    /// other two are varied against.
+    void RegisterArrowLane(
+        float surfaceHeight,
+        float laneZ,
+        bool fromLeft,
+        float speed);
+
+    /// A spear thrown in on an arc, landing inside the row.
+    ///
+    /// Deliberately not an arrow: it curves, it comes down at a chosen spot
+    /// rather than crossing the whole map, and where it lands stays dangerous
+    /// for a moment afterwards. landingOffset shifts the impact point along
+    /// the row from the thrower's side, so two launchers on one row can
+    /// cover different ground.
+    void RegisterSpearVolley(
+        float surfaceHeight,
+        float laneZ,
+        bool fromLeft,
+        float interval,
+        float initialDelay,
+        float landingOffset);
+
+    /// A cannonball fired across part of a row.
+    ///
+    /// Faster than an arrow and short of the far edge, per the GDD, so the
+    /// far side of its row is a place to wait it out.
+    void RegisterCannonballLane(
+        float surfaceHeight,
+        float laneZ,
+        bool fromLeft,
+        float interval,
+        float initialDelay,
+        float reach);
+
+    //---------------------------------------------------------
     // Interaction (E)
     //
     // Pawn only reports "E was pressed" (ConsumeInteractPulse) since it
@@ -218,6 +264,12 @@ private:
     /// Adds per-frame fireball sprites for the flying projectile and the
     /// temporary impact zone left behind after it lands.
     void AppendFireballSprites(std::vector<Sprite>& frameSprites) const;
+
+    /// Marks where a spear in flight is going to come down, and rings the
+    /// broken ground it leaves once it has. The spear itself is a real mesh
+    /// and is drawn by the 3D pass; these are only the ground markings that
+    /// make it fair to dodge and obvious afterwards.
+    void AppendSpearSprites(std::vector<Sprite>& frameSprites) const;
 
     //---------------------------------------------------------
     // Bishop / Queen clearing ability

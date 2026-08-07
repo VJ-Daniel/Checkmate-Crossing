@@ -152,7 +152,16 @@ public:
     /// keeps a lane's hazards coming instead of firing once at level
     /// start and never again. Typical use: a lambda that calls one of the
     /// Spawn* methods above with fixed parameters.
-    void RegisterRepeatingSpawn(float interval, std::function<void()> spawnFn);
+    ///
+    /// initialDelay holds the first spawn back by that many seconds instead
+    /// of firing on registration. Two lanes on the same interval otherwise
+    /// stay locked in step forever, and a field of them all fires together
+    /// on the frame the level is built; offsetting them is what keeps the
+    /// hazards reading as separate threats with gaps between.
+    void RegisterRepeatingSpawn(
+        float interval,
+        std::function<void()> spawnFn,
+        float initialDelay = 0.0f);
 
     /// Advances every active hazard, runs any due repeating spawns, and
     /// removes any hazards that have expired.

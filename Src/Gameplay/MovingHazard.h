@@ -299,6 +299,12 @@ public:
     /// currently is.
     float GetArcGroundHeight() const;
 
+    /// Where the lob is aimed to come down.
+    ///
+    /// Known from the moment it is launched, which is what lets an effect
+    /// mark the landing spot while the projectile is still in the air.
+    const glm::vec3& GetArcLandingPosition() const;
+
     /// Progress for temporary zones such as the fireball's lingering impact.
     float GetZoneElapsed() const;
 

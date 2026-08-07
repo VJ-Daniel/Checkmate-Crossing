@@ -665,6 +665,11 @@ float MovingHazard::GetArcGroundHeight() const
     return arcStart.y;
 }
 
+const glm::vec3& MovingHazard::GetArcLandingPosition() const
+{
+    return arcEnd;
+}
+
 float MovingHazard::GetZoneElapsed() const
 {
     return zoneElapsed;

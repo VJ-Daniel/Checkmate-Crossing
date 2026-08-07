@@ -44,13 +44,22 @@ enum class HazardType
     /// touched either had to re-derive which one it was looking at.
     FloorFire,
 
+    /// The patch of broken ground a thrown spear leaves where it lands.
+    ///
+    /// Its own type for the same reason FloorFire is: the spear in flight and
+    /// the danger it leaves behind have different lifetimes, different damage
+    /// rules and different visuals, and telling them apart by movement
+    /// pattern makes every system that touches either re-derive which one it
+    /// is looking at.
+    SpearImpact,
+
     Lightning,
     Cow
 };
 
 constexpr int ObstacleTypeCount = 9;
 
-constexpr int HazardTypeCount = 9;
+constexpr int HazardTypeCount = 10;
 
 ObstacleType ObstacleTypeFromIndex(int index);
 

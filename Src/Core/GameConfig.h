@@ -336,6 +336,59 @@ namespace GameConfig
     constexpr float FireballKnockback = 2.0f;
 
     //---------------------------------------------------------
+    // Spear (GDD section 2)
+    //
+    // "Curved projectiles that create a small danger area near their path or
+    // landing point." Thrown in from one side on an arc and leaving broken
+    // ground where it strikes - deliberately not the arrow's straight sweep,
+    // which is what it used to be.
+    //
+    // It shares the fireball's ArcProjectile pattern but reads differently:
+    // flatter, faster, and its danger is the landing rather than a lingering
+    // burn.
+    //---------------------------------------------------------
+
+    /// How long one spear is in the air.
+    constexpr float SpearTravelDuration = 1.05f;
+
+    /// Peak height of the throw. Lower than the fireball's lob - a spear is
+    /// hurled at the ground, not lobbed over it.
+    constexpr float SpearArcHeight = 1.5f;
+
+    /// How far along the lane a spear travels before it lands.
+    constexpr float SpearTravelDistance = 6.0f;
+
+    /// How far outside the playable width it is thrown from.
+    constexpr float SpearSpawnMargin = 0.8f;
+
+    /// Radius of the spear's own hit volume while it is in the air.
+    constexpr float SpearHitRadius = 0.30f;
+
+    constexpr float SpearDamage = 1.0f;
+
+    constexpr float SpearKnockback = 1.6f;
+
+    //---------------------------------------------------------
+    // The broken ground a landed spear leaves
+    //---------------------------------------------------------
+
+    /// How long the impact stays dangerous. Short: this is a spot to be
+    /// driven off, not an area to be locked out of.
+    constexpr float SpearImpactDuration = 1.1f;
+
+    /// Radius of that danger area, and of the ring drawn to show it. One
+    /// number for both, so what is drawn is what hurts.
+    constexpr float SpearImpactRadius = 0.75f;
+
+    constexpr float SpearImpactDamage = 1.0f;
+
+    /// Opacity of the impact ring, and of the marker that shows where the
+    /// spear is going to land while it is still in the air.
+    constexpr float SpearImpactRingOpacity = 0.60f;
+
+    constexpr float SpearTelegraphOpacity = 0.55f;
+
+    //---------------------------------------------------------
     // Floor fire left behind by a fireball impact
     //---------------------------------------------------------
 

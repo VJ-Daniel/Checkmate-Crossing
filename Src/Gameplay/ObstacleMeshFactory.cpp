@@ -440,6 +440,7 @@ namespace ObstacleMeshFactory
 
         case HazardType::Fireball:
         case HazardType::FloorFire:
+        case HazardType::SpearImpact:
         case HazardType::Lightning:
             // These are drawn as sprites, not meshes: Game owns their frames
             // and rebuilds them every Render from the hazard's timing state.

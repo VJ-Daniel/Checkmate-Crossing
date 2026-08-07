@@ -39,7 +39,8 @@ HazardType HazardTypeFromIndex(int index)
     case 4:  return HazardType::RollingLog;
     case 5:  return HazardType::Fireball;
     case 6:  return HazardType::FloorFire;
-    case 7:  return HazardType::Lightning;
+    case 7:  return HazardType::SpearImpact;
+    case 8:  return HazardType::Lightning;
     default: return HazardType::Cow;
     }
 }
@@ -72,6 +73,7 @@ const char* GetHazardTypeName(HazardType type)
     case HazardType::RollingLog:  return "Rolling Log";
     case HazardType::Fireball:    return "Fireball";
     case HazardType::FloorFire:   return "Floor Fire";
+    case HazardType::SpearImpact: return "Spear Impact";
     case HazardType::Lightning:   return "Lightning";
     case HazardType::Cow:         return "Cow";
     }
@@ -118,6 +120,7 @@ bool IsAbilityClearable(HazardType type)
     case HazardType::RollingLog:
     case HazardType::Fireball:
     case HazardType::FloorFire:
+    case HazardType::SpearImpact:
     case HazardType::Lightning:
         return false;
     }

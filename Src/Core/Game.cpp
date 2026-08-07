@@ -746,81 +746,93 @@ void Game::BuildLevelHazards()
 
     const float halfWidth = Level::GetPlayableHalfWidth();
 
-    // Arrow section (2 rows): row 0 teaches straight dodging, row 1
-    // introduces the curved Spear -- there is no dedicated Spear lane
-    // type, so it shares the section with Arrow rather than sitting in an
-    // unrelated SafeGrass row.
+    //-----------------------------------------------------------
+    // Projectile lanes.
     //
-    // Both arrow fields are populated: the second one is a later run of the
-    // same lane type, and resolving only the first would leave it bare.
-    for (const auto& rows : FindRunsOfType(*level, LaneType::Arrow))
+    // Level 1 used to carry one arrow field, one spear and one cannonball,
+    // which meant most of it was crossed by waiting for a single hazard to
+    // pass. The three types are now spread the length of the level, come
+    // from both sides, and run on intervals that do not divide into each
+    // other, so a rhythm learned in one row does not carry to the next.
+    //
+    // Two rules keep it fair:
+    //
+    //   - Nothing sweeps a barrier row. Those rows funnel the player into a
+    //     single gap, and a projectile crossing one is not a dodge, it is a
+    //     toll. The woodland rows carry the cow and nothing else.
+    //   - Every lane past the first is given a starting offset. Lanes that
+    //     all fire on registration arrive as one wall, and stay synchronised
+    //     wherever their intervals line up.
+    //
+    // Nothing is placed in the finale or past the final checkpoint; those
+    // belong to fireballs and lightning, and to the walk up to the King.
+    //-----------------------------------------------------------
+
+    // Row of a run, guarded so a shorter level cannot index past the end.
+    const auto laneAt =
+        [](const std::vector<const Lane*>& rows, std::size_t index) -> const Lane*
+        {
+            return index < rows.size() ? rows[index] : nullptr;
+        };
+
+    const auto arrowRuns = FindRunsOfType(*level, LaneType::Arrow);
+    const auto spikeRuns = FindRunsOfType(*level, LaneType::SpikeMud);
+    const auto cannonRuns = FindRunsOfType(*level, LaneType::Cannonball);
+    const auto grassRuns = FindRunsOfType(*level, LaneType::SafeGrass);
+
+    const auto onLane = [&](const Lane* target, auto&& place)
+        {
+            if (target)
+                place(target->GetSurfaceHeight(), target->GetCenterZ());
+        };
+
+    //--- First arrow field: the teaching ground -----------------
+    if (arrowRuns.size() >= 1)
     {
-        if (rows.size() >= 1 && rows[0])
-        {
-            const float y = rows[0]->GetSurfaceHeight();
-            const float z = rows[0]->GetCenterZ();
+        const auto& rows = arrowRuns[0];
 
-            // "Arrows... range covers the full horizontal width of the
-            // map." Loops on its own, so it needs no repeating spawner.
-            hazardManager->SpawnLinearHazard(
-                HazardType::Arrow,
-                glm::vec3(-halfWidth - 0.5f, y, z),
-                glm::vec3(halfWidth + 0.5f, y, z),
-                3.0f,
-                true);
-        }
+        // Two arrows running opposite ways with a spear row between them.
+        // The middle row is the shelter, and the spear is what stops it
+        // being a free one.
+        onLane(laneAt(rows, 0), [&](float y, float z)
+            { RegisterArrowLane(y, z, true, 3.0f); });
 
-        // A third row, where the field has one, gets a second arrow running
-        // the other way so the section cannot be crossed on one rhythm.
-        if (rows.size() >= 3 && rows[2])
-        {
-            const float y = rows[2]->GetSurfaceHeight();
-            const float z = rows[2]->GetCenterZ();
+        onLane(laneAt(rows, 1), [&](float y, float z)
+            { RegisterSpearVolley(y, z, true, 3.6f, 0.0f, 0.0f); });
 
-            hazardManager->SpawnLinearHazard(
-                HazardType::Arrow,
-                glm::vec3(halfWidth + 0.5f, y, z),
-                glm::vec3(-halfWidth - 0.5f, y, z),
-                3.4f,
-                true);
-        }
-
-        if (rows.size() >= 2 && rows[1])
-        {
-            const float y = rows[1]->GetSurfaceHeight();
-            const float z = rows[1]->GetCenterZ();
-
-            // "Similar speed to arrows, but curved trajectory." One-shot
-            // per flight, so a repeating spawner keeps a new one coming.
-            hazardManager->RegisterRepeatingSpawn(
-                3.5f,
-                [this, y, z, halfWidth]()
-                {
-                    // Straight down its own lane, not bowed.
-                    //
-                    // The curved sweep offsets the path perpendicular to
-                    // itself, and a lane runs along X - so the bow was in Z
-                    // and carried the spear a full 1.2 units out of the row
-                    // it was fired along. The fireball hit the same problem
-                    // and now arcs vertically instead (RegisterFireballVolley),
-                    // which is the curve the GDD is describing.
-                    hazardManager->SpawnLinearHazard(
-                        HazardType::Spear,
-                        glm::vec3(-halfWidth - 0.5f, y, z),
-                        glm::vec3(halfWidth + 0.5f, y, z),
-                        3.2f,
-                        false);
-                });
-        }
+        onLane(laneAt(rows, 2), [&](float y, float z)
+            { RegisterArrowLane(y, z, false, 3.4f); });
     }
 
-    // SpikeMud section: stationary only (BuildLevelObstacles). No moving
-    // hazard here, matching the GDD's map.
-
-    // Cannonball section (3 rows): a repeating cannonball sweep at the
-    // middle row.
+    //--- Connector into the spike field -------------------------
+    if (grassRuns.size() >= 2)
     {
-        auto rows = FindConsecutiveRowsOfType(*level, LaneType::Cannonball);
+        // A spear from the far side, so the first thing thrown from the
+        // right arrives before the player has settled into dodging left.
+        onLane(laneAt(grassRuns[1], 0), [&](float y, float z)
+            { RegisterSpearVolley(y, z, false, 4.2f, 1.4f, 0.5f); });
+    }
+
+    //--- Spike field: one slow arrow across the middle ----------
+    if (spikeRuns.size() >= 1)
+    {
+        // Slower than the open-ground arrows on purpose. The spikes already
+        // limit where the player can stand, so the crossing window has to be
+        // longer to stay honest.
+        onLane(laneAt(spikeRuns[0], 1), [&](float y, float z)
+            { RegisterArrowLane(y, z, true, 2.6f); });
+    }
+
+    //--- Cannonball section and its approach --------------------
+    if (grassRuns.size() >= 4)
+    {
+        onLane(laneAt(grassRuns[3], 0), [&](float y, float z)
+            { RegisterCannonballLane(y, z, true, 3.1f, 0.7f, halfWidth * 0.70f); });
+    }
+
+    if (cannonRuns.size() >= 1)
+    {
+        const auto& rows = cannonRuns[0];
 
         // A log rolls the length of this section, along Z rather than across
         // it. It used to run through the fireball/lightning finale, which is
@@ -845,26 +857,83 @@ void Game::BuildLevelHazards()
                 });
         }
 
-        if (rows.size() >= 2 && rows[1])
-        {
-            const float y = rows[1]->GetSurfaceHeight();
-            const float z = rows[1]->GetCenterZ();
-            const float range = halfWidth * 0.7f;
+        // "Faster than arrows... range is shorter and reaches about 70% of
+        // the map's width." Firing from opposite edges on different clocks,
+        // so neither side of the section is reliably safe.
+        onLane(laneAt(rows, 0), [&](float y, float z)
+            { RegisterCannonballLane(y, z, false, 2.6f, 0.0f, halfWidth * 0.70f); });
 
-            // "Faster than arrows... range is shorter and reaches about
-            // 70% of the map's width." One-shot per launch.
-            hazardManager->RegisterRepeatingSpawn(
-                2.5f,
-                [this, y, z, range]()
-                {
-                    hazardManager->SpawnLinearHazard(
-                        HazardType::Cannonball,
-                        glm::vec3(-range, y, z),
-                        glm::vec3(range, y, z),
-                        5.5f,
-                        false);
-                });
-        }
+        onLane(laneAt(rows, 1), [&](float y, float z)
+            { RegisterCannonballLane(y, z, true, 2.9f, 1.3f, halfWidth * 0.85f); });
+
+        onLane(laneAt(rows, 2), [&](float y, float z)
+            { RegisterArrowLane(y, z, false, 3.2f); });
+    }
+
+    //--- Connector before the first woodland --------------------
+    if (grassRuns.size() >= 5)
+    {
+        const auto& rows = grassRuns[4];
+
+        // Both sides, different landing spots, well out of step. This is the
+        // clearest statement of what a spear is: two arcs crossing over one
+        // stretch of ground, each dangerous only where it comes down.
+        onLane(laneAt(rows, 0), [&](float y, float z)
+            { RegisterSpearVolley(y, z, true, 3.8f, 0.5f, -1.0f); });
+
+        onLane(laneAt(rows, 1), [&](float y, float z)
+            { RegisterSpearVolley(y, z, false, 4.4f, 2.2f, 0.8f); });
+    }
+
+    // The woodland rows themselves stay clear: barriers plus a cow is
+    // already a full row, and a sweep across a one-gap barrier would be
+    // unavoidable rather than hard.
+
+    //--- After the second checkpoint ----------------------------
+    if (grassRuns.size() >= 7)
+    {
+        onLane(laneAt(grassRuns[6], 0), [&](float y, float z)
+            { RegisterCannonballLane(y, z, false, 3.3f, 0.9f, halfWidth * 0.75f); });
+    }
+
+    //--- Second arrow field: faster, both ways ------------------
+    if (arrowRuns.size() >= 2)
+    {
+        const auto& rows = arrowRuns[1];
+
+        onLane(laneAt(rows, 0), [&](float y, float z)
+            { RegisterArrowLane(y, z, true, 3.6f); });
+
+        onLane(laneAt(rows, 1), [&](float y, float z)
+            { RegisterArrowLane(y, z, false, 3.9f); });
+    }
+
+    //--- The crossfire row --------------------------------------
+    if (grassRuns.size() >= 8)
+    {
+        const auto& rows = grassRuns[7];
+
+        // Two throwers on one row, opposite sides, landing apart and timed
+        // apart, so there is always ground to stand on between them.
+        onLane(laneAt(rows, 0), [&](float y, float z)
+            { RegisterSpearVolley(y, z, false, 3.0f, 0.4f, 0.0f); });
+
+        onLane(laneAt(rows, 0), [&](float y, float z)
+            { RegisterSpearVolley(y, z, true, 3.4f, 1.9f, 1.5f); });
+    }
+
+    //--- Second spike field -------------------------------------
+    if (spikeRuns.size() >= 2)
+    {
+        onLane(laneAt(spikeRuns[1], 1), [&](float y, float z)
+            { RegisterCannonballLane(y, z, true, 3.5f, 1.6f, halfWidth * 0.60f); });
+    }
+
+    //--- Last open row before the second woodland ---------------
+    if (grassRuns.size() >= 9)
+    {
+        onLane(laneAt(grassRuns[8], 0), [&](float y, float z)
+            { RegisterArrowLane(y, z, true, 4.2f); });
     }
 
     // FenceTree section: the Cow starts chasing from the first row's
@@ -1088,6 +1157,99 @@ void Game::RegisterFireballVolley(
                 duration,
                 GameConfig::FireballArcHeight);
         });
+}
+
+void Game::RegisterArrowLane(
+    float surfaceHeight,
+    float laneZ,
+    bool fromLeft,
+    float speed)
+{
+    if (!hazardManager)
+        return;
+
+    const float halfWidth = Level::GetPlayableHalfWidth();
+    const float edge = halfWidth + 0.5f;
+
+    const glm::vec3 start(fromLeft ? -edge : edge, surfaceHeight, laneZ);
+    const glm::vec3 end(fromLeft ? edge : -edge, surfaceHeight, laneZ);
+
+    // Loops on its own, so it needs no repeating spawner.
+    hazardManager->SpawnLinearHazard(
+        HazardType::Arrow, start, end, speed, true);
+}
+
+void Game::RegisterSpearVolley(
+    float surfaceHeight,
+    float laneZ,
+    bool fromLeft,
+    float interval,
+    float initialDelay,
+    float landingOffset)
+{
+    if (!hazardManager)
+        return;
+
+    const float halfWidth = Level::GetPlayableHalfWidth();
+
+    const float edgeX = halfWidth + GameConfig::SpearSpawnMargin;
+    const float startX = fromLeft ? -edgeX : edgeX;
+
+    // Lands inside the field rather than crossing it: travel distance from
+    // the throwing edge, shifted by the caller's offset so two throwers on
+    // one row do not both hit the same spot.
+    const float rawLandingX = fromLeft
+        ? startX + GameConfig::SpearTravelDistance + landingOffset
+        : startX - GameConfig::SpearTravelDistance - landingOffset;
+
+    // Kept inside the playable width, so the danger area it leaves is always
+    // somewhere the player can actually be standing.
+    const float landingX = std::clamp(
+        rawLandingX,
+        -halfWidth + GameConfig::SpearImpactRadius,
+        halfWidth - GameConfig::SpearImpactRadius);
+
+    // Both ends share laneZ, so the arc rises and falls without leaving the
+    // row it was thrown along.
+    const glm::vec3 start(startX, surfaceHeight, laneZ);
+    const glm::vec3 landing(landingX, surfaceHeight, laneZ);
+
+    hazardManager->RegisterRepeatingSpawn(
+        interval,
+        [this, start, landing]()
+        {
+            hazardManager->SpawnArcHazard(
+                HazardType::Spear,
+                start,
+                landing,
+                GameConfig::SpearTravelDuration,
+                GameConfig::SpearArcHeight);
+        },
+        initialDelay);
+}
+
+void Game::RegisterCannonballLane(
+    float surfaceHeight,
+    float laneZ,
+    bool fromLeft,
+    float interval,
+    float initialDelay,
+    float reach)
+{
+    if (!hazardManager)
+        return;
+
+    const glm::vec3 start(fromLeft ? -reach : reach, surfaceHeight, laneZ);
+    const glm::vec3 end(fromLeft ? reach : -reach, surfaceHeight, laneZ);
+
+    hazardManager->RegisterRepeatingSpawn(
+        interval,
+        [this, start, end]()
+        {
+            hazardManager->SpawnLinearHazard(
+                HazardType::Cannonball, start, end, 5.5f, false);
+        },
+        initialDelay);
 }
 
 void Game::BuildLevelCollectibles()
@@ -1617,6 +1779,98 @@ void Game::AppendFireballSprites(std::vector<Sprite>& frameSprites) const
     }
 }
 
+void Game::AppendSpearSprites(std::vector<Sprite>& frameSprites) const
+{
+    if (!hazardManager)
+        return;
+
+    // Amber, so it belongs to neither of the two colours already spoken for:
+    // red is burning ground and blue is an incoming bolt. A spear is a
+    // physical thing landing, and reads as its own threat.
+    const glm::vec3 spearTint(1.0f, 0.72f, 0.22f);
+
+    for (const auto& hazard : hazardManager->GetHazards())
+    {
+        if (!hazard)
+            continue;
+
+        const Hazard* hazardVisual =
+            dynamic_cast<const Hazard*>(&hazard->GetVisual());
+
+        if (!hazardVisual)
+            continue;
+
+        const HazardType type = hazardVisual->GetType();
+
+        // In the air: mark where it is going to come down.
+        //
+        // The spear itself is a mesh and the 3D pass draws it following the
+        // arc, so this is purely the fairness marker - without it the player
+        // has to judge a parabola's landing point by eye, which is not a
+        // dodge so much as a guess.
+        if (type == HazardType::Spear &&
+            hazard->GetMovementPattern() == HazardMovementPattern::ArcProjectile)
+        {
+            const float duration =
+                std::max(hazard->GetArcDuration(), 0.001f);
+
+            const float t = std::clamp(
+                hazard->GetArcElapsed() / duration,
+                0.0f,
+                1.0f);
+
+            const glm::vec3 landing = hazard->GetArcLandingPosition();
+
+            Sprite marker = Sprite::CreateGroundDecal(
+                "hazard_circle",
+                landing,
+                glm::vec2(
+                    GameConfig::SpearImpactRadius * 2.0f,
+                    GameConfig::SpearImpactRadius * 2.0f));
+
+            marker.tint = spearTint;
+
+            // Tightens as the spear falls, so the marker is a countdown
+            // rather than a static decoration.
+            marker.opacity = GameConfig::SpearTelegraphOpacity * (0.35f + 0.65f * t);
+            marker.layer = 13;
+
+            frameSprites.push_back(marker);
+            continue;
+        }
+
+        // Landed: the broken ground, sized from the radius the collision
+        // pass actually tests so the ring is the danger rather than a hint
+        // at it.
+        if (type == HazardType::SpearImpact)
+        {
+            const float duration =
+                std::max(hazard->GetZoneDuration(), 0.001f);
+
+            const float t = std::clamp(
+                hazard->GetZoneElapsed() / duration,
+                0.0f,
+                1.0f);
+
+            Sprite ring = Sprite::CreateGroundDecal(
+                "hazard_circle",
+                hazard->GetVisual().GetGroundPosition(),
+                glm::vec2(
+                    GameConfig::SpearImpactRadius * 2.0f,
+                    GameConfig::SpearImpactRadius * 2.0f));
+
+            ring.tint = spearTint;
+
+            // Fades out as the danger does, so it never outlives what it is
+            // warning about.
+            ring.opacity = GameConfig::SpearImpactRingOpacity * (1.0f - t);
+            ring.layer = 15;
+
+            frameSprites.push_back(ring);
+        }
+    }
+}
+
 void Game::TriggerAbilityClearPulse()
 {
     if (!pawn)
@@ -2012,6 +2266,7 @@ void Game::Update(float deltaTime)
     if (hazardManager && pawn)
         hazardManager->Update(deltaTime, pawn->GetTransform().GetPosition());
 
+
     // ---- Update Hazard Collision ----
     if (hazardCollision)
     {
@@ -2277,6 +2532,7 @@ void Game::Render()
     std::vector<Sprite> frameSprites = sprites;
     AppendLightningSprites(frameSprites);
     AppendFireballSprites(frameSprites);
+    AppendSpearSprites(frameSprites);
     AppendAbilityPulseSprites(frameSprites);
 
     if (spriteRenderer)

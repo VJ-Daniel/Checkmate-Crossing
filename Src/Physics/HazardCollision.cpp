@@ -20,9 +20,23 @@ namespace
         {
             HazardType type = hazardVisual->GetType();
 
-            if (type == HazardType::Arrow || type == HazardType::Spear)
+            if (type == HazardType::Spear)
             {
-                // Arrow/spear are long and thin - use a smaller box
+                // Thrown on an arc now rather than swept along the lane, so
+                // its volume is centred on the shaft where it actually is
+                // rather than on the ground beneath it. Kept small: the
+                // spear is meant to be dodged in the air and answered for on
+                // the ground, and a generous airborne box would make the
+                // landing zone pointless.
+                const glm::vec3 center =
+                    visual.GetGroundPosition() +
+                    glm::vec3(0.0f, GameConfig::SpearHitRadius, 0.0f);
+
+                comp.SetCircle(center, GameConfig::SpearHitRadius);
+            }
+            else if (type == HazardType::Arrow)
+            {
+                // Long and thin - use a smaller box
                 glm::vec3 position = visual.GetGroundPosition();
                 float height = visual.GetHeight();
                 float width = visual.GetFootprintWidth();
@@ -287,6 +301,11 @@ void HazardCollision::CheckMovingHazards(
                 damage = GameConfig::FireballDamage;
                 knockback = GameConfig::FireballKnockback;
             }
+            else if (type == HazardType::Spear)
+            {
+                damage = GameConfig::SpearDamage;
+                knockback = GameConfig::SpearKnockback;
+            }
             else if (type == HazardType::Cannonball)
             {
                 damage = 0.5f;
@@ -505,6 +524,37 @@ void HazardCollision::CheckAreaHazards(
         {
             if (UpdateFloorFireContact(*hazard, pawnPos, deltaTime))
                 touchedFires.push_back(hazard.get());
+
+            continue;
+        }
+
+        // Broken ground where a spear struck. One hit while it lasts, paced
+        // by the shared cooldown rather than the fire's own timer: this is a
+        // spot to be driven off, not an area to be ground down in.
+        if (hazardVisual->GetType() == HazardType::SpearImpact)
+        {
+            if (!hazard->IsActive())
+                continue;
+
+            const glm::vec3 offset = pawnPos - visual.GetGroundPosition();
+
+            const float distance = glm::length(
+                glm::vec3(offset.x, 0.0f, offset.z));
+
+            if (distance < GameConfig::SpearImpactRadius)
+            {
+                if (pawn->HasShield())
+                {
+                    pawn->ConsumeShield();
+                }
+                else if (!pawn->IsImmuneToHazards())
+                {
+                    ApplyDamage(
+                        GameConfig::SpearImpactDamage,
+                        glm::vec3(0.0f),
+                        0.0f);
+                }
+            }
 
             continue;
         }

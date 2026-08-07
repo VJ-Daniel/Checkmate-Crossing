@@ -301,16 +301,32 @@ int HazardManager::ClearRemovableHazards(
 
 void HazardManager::RegisterRepeatingSpawn(
     float interval,
-    std::function<void()> spawnFn)
+    std::function<void()> spawnFn,
+    float initialDelay)
 {
     RepeatingSpawn spawn;
     spawn.interval = interval > 0.0f ? interval : 1.0f;
     spawn.spawnFn = std::move(spawnFn);
 
-    // Fires once immediately so the lane isn't empty until the first
-    // interval elapses, then repeats every `interval` seconds from here.
-    if (spawn.spawnFn)
+    if (initialDelay > 0.0f)
+    {
+        // Start the clock partway through, so this lane's first hazard
+        // arrives `initialDelay` seconds from now rather than immediately.
+        //
+        // Every lane firing on registration means every lane fires together
+        // on the frame the level is built, and then keeps firing together
+        // wherever intervals happen to line up. That is what turns a field
+        // of independent hazards into a single wall arriving at once, which
+        // is both unreadable and, in a lane the player is funnelled into,
+        // genuinely unavoidable.
+        spawn.timer = std::max(spawn.interval - initialDelay, 0.0f);
+    }
+    else if (spawn.spawnFn)
+    {
+        // Fires once immediately so the lane isn't empty until the first
+        // interval elapses, then repeats every `interval` seconds from here.
         spawn.spawnFn();
+    }
 
     repeatingSpawns.push_back(std::move(spawn));
 }
@@ -341,20 +357,32 @@ void HazardManager::Update(float deltaTime, const glm::vec3& pawnGroundPosition)
     // GDD: "[fireballs] leave fire behind that deals continuous damage
     // over time while the player remains inside it."
     std::vector<glm::vec3> burnPositions;
+    std::vector<glm::vec3> spearImpacts;
 
     for (const auto& hazard : hazards)
     {
         if (!hazard || !hazard->HasExpired())
             continue;
 
-        const auto* fireball = dynamic_cast<const Hazard*>(&hazard->GetVisual());
+        const auto* typed = dynamic_cast<const Hazard*>(&hazard->GetVisual());
 
-        // A fireball that finished its flight has landed. The projectile
-        // dies here and a separate FloorFire hazard takes over at the impact
+        if (!typed)
+            continue;
+
+        // A projectile that finished its flight has landed. The projectile
+        // dies here and a separate zone hazard takes over at the impact
         // point -- two objects with two lifetimes, rather than one pretending
         // to be both.
-        if (fireball && fireball->GetType() == HazardType::Fireball)
+        if (typed->GetType() == HazardType::Fireball)
             burnPositions.push_back(hazard->GetVisual().GetGroundPosition());
+
+        // Same handover for a thrown spear, which leaves broken ground where
+        // it struck rather than fire.
+        else if (typed->GetType() == HazardType::Spear &&
+            hazard->GetMovementPattern() == HazardMovementPattern::ArcProjectile)
+        {
+            spearImpacts.push_back(hazard->GetVisual().GetGroundPosition());
+        }
     }
 
     hazards.erase(
@@ -371,6 +399,14 @@ void HazardManager::Update(float deltaTime, const glm::vec3& pawnGroundPosition)
     {
         SpawnTemporaryZone(
             HazardType::FloorFire, position, GameConfig::FireballBurnDuration);
+    }
+
+    for (const glm::vec3& position : spearImpacts)
+    {
+        SpawnTemporaryZone(
+            HazardType::SpearImpact,
+            position,
+            GameConfig::SpearImpactDuration);
     }
 }
 
