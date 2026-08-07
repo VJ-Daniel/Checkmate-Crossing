@@ -323,8 +323,19 @@ void HazardCollision::CheckStationaryHazards(
         if (pawnCollision.Intersects(obstacleCollision))
         {
             ObstacleType type = obstacle->GetType();
-            glm::vec3 pawnVelocity = pawn->GetVelocity();
-            bool isJumping = (pawnVelocity.y > 0.1f);
+
+            // Straight off the jump state, which is the authority on it.
+            //
+            // This used to read velocity.y, and had the answer exactly
+            // backwards in both directions. Jumping never touches velocity -
+            // Pawn::UpdateJump drives jumpVerticalVelocity and jumpHeight,
+            // which are separate - so a real jump always reported false, and
+            // Fence, Rock and Palisade could not be cleared at all however
+            // well the leap was timed. Meanwhile the only thing that ever
+            // did set velocity.y was knockback's upward bounce, so being hit
+            // was the one state the game accepted as "jumping", and a shove
+            // let the player through obstacles a jump could not clear.
+            const bool isJumping = pawn->IsAirborne();
 
             // ==========================================
             // 1. WALLS & TREES: Completely Block (Cannot be jumped over)

@@ -335,6 +335,7 @@ bool Game::Initialize(
 
 
 
+
     return true;
 }
 
@@ -535,44 +536,97 @@ void Game::BuildLevelObstacles()
     // spanning the row forces the player to find the gap. Staggering those
     // gaps between consecutive rows is what makes a section a route rather
     // than a series of straight lines.
-    auto placeBarrier = [&place, halfWidth](
+    // How far each piece is set into its neighbour.
+    //
+    // Small and deliberate: enough that the seam between two models closes
+    // instead of merely meeting, without the two visibly interpenetrating.
+    constexpr float BarrierOverlap = 0.06f;
+
+    // Every piece's own width, so a barrier's spacing comes from the models
+    // in it rather than a number typed at the call site. That is what was
+    // wrong before: walls were stepped 1.10 apart with a 1.02-wide model and
+    // fences 1.05 with a 0.98-wide one, so every barrier in the level was a
+    // row of separate props with a finger's width of daylight between them
+    // rather than one structure.
+    const auto modelWidth = [this](ObstacleType type)
+        {
+            return obstacleMeshes->GetModel(type).footprintWidth;
+        };
+
+    auto placeBarrier = [&place, &modelWidth, halfWidth](
         const Lane& lane,
         ObstacleType type,
         float gapCenterX,
-        float gapHalfWidth,
-        float spacing)
+        float gapHalfWidth)
         {
-            for (float x = -halfWidth + spacing * 0.5f;
-                x <= halfWidth - spacing * 0.5f;
-                x += spacing)
-            {
-                if (std::fabs(x - gapCenterX) < gapHalfWidth)
-                    continue;
+            const float width = modelWidth(type);
+            const float step = std::max(width - BarrierOverlap, 0.1f);
 
-                place(type, x, lane);
+            // Runs edge to edge, with the last piece pulled flush against the
+            // far boundary rather than stopping wherever the stride happened
+            // to run out. That remainder used to be left open: a barrier
+            // covered the field until roughly x = +3.8 and left a slot
+            // against the wall, which on three rows was wide enough to walk
+            // round the whole thing.
+            for (float x = -halfWidth + width * 0.5f; ; x += step)
+            {
+                const bool isLast = x > halfWidth - width * 0.5f;
+
+                const float center =
+                    isLast ? (halfWidth - width * 0.5f) : x;
+
+                if (std::fabs(center - gapCenterX) >= gapHalfWidth)
+                    place(type, center, lane);
+
+                if (isLast)
+                    break;
             }
         };
 
     // Same idea, but alternating two prop types across the span so a barrier
     // reads as something assembled out of whatever was to hand.
-    auto placeMixedBarrier = [&place, halfWidth](
+    //
+    // Advances by whichever piece was just placed rather than by one shared
+    // step, since the two types are rarely the same width - stepping by a
+    // single figure leaves a seam after every narrower piece.
+    auto placeMixedBarrier = [&place, &modelWidth, halfWidth](
         const Lane& lane,
         ObstacleType first,
         ObstacleType second,
         float gapCenterX,
-        float gapHalfWidth,
-        float spacing)
+        float gapHalfWidth)
         {
             int index = 0;
 
-            for (float x = -halfWidth + spacing * 0.5f;
-                x <= halfWidth - spacing * 0.5f;
-                x += spacing, ++index)
-            {
-                if (std::fabs(x - gapCenterX) < gapHalfWidth)
-                    continue;
+            // Left edge of the next piece to be laid.
+            float cursor = -halfWidth;
 
-                place((index % 2 == 0) ? first : second, x, lane);
+            for (;;)
+            {
+                const ObstacleType type =
+                    (index % 2 == 0) ? first : second;
+
+                const float width = modelWidth(type);
+
+                const bool isLast =
+                    cursor + width * 0.5f > halfWidth - width * 0.5f;
+
+                // Same edge rule as the single-type barrier: the final piece
+                // is set flush to the boundary so no slot is left against it.
+                const float center = isLast
+                    ? (halfWidth - width * 0.5f)
+                    : (cursor + width * 0.5f);
+
+                // Skipped for the opening, but the cursor still advances, so
+                // the pieces past the gap stay in line with those before it.
+                if (std::fabs(center - gapCenterX) >= gapHalfWidth)
+                    place(type, center, lane);
+
+                if (isLast)
+                    break;
+
+                cursor += std::max(width - BarrierOverlap, 0.1f);
+                ++index;
             }
         };
 
@@ -656,7 +710,7 @@ void Game::BuildLevelObstacles()
             {
                 placeBarrier(
                     *rows[0], ObstacleType::Fence,
-                    halfWidth * 0.58f, GapHalfWidth, 1.05f);
+                    halfWidth * 0.58f, GapHalfWidth);
             }
 
             if (rows.size() >= 2)
@@ -665,7 +719,7 @@ void Game::BuildLevelObstacles()
                 // row is purely about finding the line through it.
                 placeMixedBarrier(
                     *rows[1], ObstacleType::Tree, ObstacleType::Rock,
-                    -halfWidth * 0.42f, GapHalfWidth, 1.15f);
+                    -halfWidth * 0.42f, GapHalfWidth);
             }
 
             if (rows.size() >= 3)
@@ -674,14 +728,22 @@ void Game::BuildLevelObstacles()
                 // that genuinely cannot be forced - the gap is the only way.
                 placeBarrier(
                     *rows[2], ObstacleType::Wall,
-                    halfWidth * 0.15f, GapHalfWidth, 1.10f);
+                    halfWidth * 0.15f, GapHalfWidth);
             }
 
             if (rows.size() >= 4)
             {
+                // Palisade and fence, both of which stop the player.
+                //
+                // This row used to alternate palisade with bush, and a bush
+                // does not block - it only slows. Every second piece was
+                // therefore a hole, and the row read as a barrier while
+                // being walked straight through in five places. Bushes are
+                // scenery, and belong on the open grass rather than in a
+                // structure meant to turn the player.
                 placeMixedBarrier(
-                    *rows[3], ObstacleType::Palisade, ObstacleType::Bush,
-                    -halfWidth * 0.66f, GapHalfWidth, 1.05f);
+                    *rows[3], ObstacleType::Palisade, ObstacleType::Fence,
+                    -halfWidth * 0.66f, GapHalfWidth);
             }
         }
 
@@ -695,21 +757,21 @@ void Game::BuildLevelObstacles()
             {
                 placeBarrier(
                     *rows[0], ObstacleType::Palisade,
-                    halfWidth * 0.70f, GapHalfWidth, 1.00f);
+                    halfWidth * 0.70f, GapHalfWidth);
             }
 
             if (rows.size() >= 2)
             {
                 placeMixedBarrier(
                     *rows[1], ObstacleType::Fence, ObstacleType::Tree,
-                    -halfWidth * 0.22f, GapHalfWidth, 1.10f);
+                    -halfWidth * 0.22f, GapHalfWidth);
             }
 
             if (rows.size() >= 3)
             {
                 placeMixedBarrier(
                     *rows[2], ObstacleType::Wall, ObstacleType::Fence,
-                    halfWidth * 0.40f, GapHalfWidth, 1.10f);
+                    halfWidth * 0.40f, GapHalfWidth);
             }
         }
     }
@@ -2897,6 +2959,7 @@ void Game::Update(float deltaTime)
 
     if (hazardManager && pawn)
         hazardManager->Update(deltaTime, pawn->GetTransform().GetPosition());
+
 
 
 
