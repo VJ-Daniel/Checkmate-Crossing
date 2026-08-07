@@ -10,6 +10,8 @@
 
 #include "MovingHazard.h"
 
+#include <cmath>
+
 #include <algorithm>
 
 #include <gtc/matrix_transform.hpp>
@@ -92,13 +94,24 @@ void MovingHazard::SetArcProjectile(
 void MovingHazard::SetWarningThenStrike(
     const glm::vec3& groundPosition,
     float warningDurationValue,
-    float strikeDurationValue)
+    float strikeDurationValue,
+    float catchRadiusValue)
 {
     pattern = HazardMovementPattern::WarningThenStrike;
 
     warningDuration = warningDurationValue;
     strikeDuration = strikeDurationValue;
+    catchRadius = catchRadiusValue;
     phaseElapsed = 0.0f;
+
+    lightningPhase = LightningPhase::Warning;
+    caughtTarget = false;
+    strikeHitPending = false;
+
+    // Until the strike resolves, the marker's own centre is the best answer
+    // to "where will this land", and it is the answer used verbatim if the
+    // player gets clear in time.
+    strikePosition = groundPosition;
 
     // Starts in the telegraph phase, not already dangerous.
     active = false;
@@ -126,20 +139,131 @@ void MovingHazard::SetTemporaryZone(
         visual->SetGroundPosition(groundPosition);
 }
 
-void MovingHazard::SetFollowTarget(float maxSpeed)
+void MovingHazard::SetFollowTarget(
+    float maxSpeed,
+    float detectionRange,
+    float followDistanceValue)
 {
     pattern = HazardMovementPattern::FollowTarget;
 
     followMaxSpeed = maxSpeed;
+    followDetectionRange = detectionRange;
+    followDistance = followDistanceValue;
+    following = false;
 
     active = true;
     expired = false;
     velocity = glm::vec3(0.0f);
 }
 
+bool MovingHazard::IsFollowing() const
+{
+    return following;
+}
+
+void MovingHazard::SetFollowLimitZ(float minimumZ)
+{
+    followMinZ = minimumZ;
+}
+
+void MovingHazard::SetFacesTravel(bool shouldFaceTravel)
+{
+    facesTravel = shouldFaceTravel;
+}
+
+bool MovingHazard::GetFacesTravel() const
+{
+    return facesTravel;
+}
+
+void MovingHazard::UpdateFacing(float deltaTime)
+{
+    if (!facesTravel || !visual || deltaTime <= 0.0f)
+        return;
+
+    // Below this the direction is numerical noise rather than travel, and
+    // turning toward it is exactly what makes a near-stationary hazard
+    // jitter. Hold the last heading instead.
+    constexpr float MinimumSpeed = 0.05f;
+
+    // Degrees per second. Fast enough that a hazard reversing at the end of
+    // its sweep has turned round before it is back on screen, slow enough
+    // that the turn reads as a turn rather than a snap.
+    constexpr float TurnDegreesPerSecond = 540.0f;
+
+    const glm::vec3 travel(velocity.x, 0.0f, velocity.z);
+
+    if (glm::length(travel) < MinimumSpeed)
+        return;
+
+    // Every hazard model with a nose is authored pointing +X, and a Y
+    // rotation of theta carries +X round to (cos theta, 0, -sin theta).
+    // Aiming that at the travel direction is therefore atan2(-z, x).
+    const float target =
+        glm::degrees(std::atan2(-travel.z, travel.x));
+
+    // Pitch, from the same velocity. Yaw alone only ever answers "which way
+    // along the ground", which is all a sweeping arrow needs - but it left a
+    // thrown spear perfectly level for its whole flight, sliding along its
+    // own arc rather than being thrown through it.
+    //
+    // The model matrix composes as Ry * Rx * Rz (see Transform3D), so a Z
+    // rotation is applied to the nose BEFORE the yaw swings it into world
+    // space: it lifts the local +X nose toward +Y while the yaw is still
+    // free to point it anywhere. That is why this belongs in the z slot and
+    // not the x one, and it is also what makes it work from either side
+    // without a per-direction special case - the lift happens in the
+    // spear's own frame, so a spear thrown left pitches up exactly as one
+    // thrown right does.
+    //
+    // Rising gives +y and a nose-up angle, the apex gives y = 0 and level,
+    // falling gives -y and a nose-down angle, all straight out of the
+    // trajectory rather than scripted.
+    const float pitchTarget = glm::degrees(
+        std::atan2(velocity.y, glm::length(travel)));
+
+    // Pitch is taken straight from the trajectory rather than eased toward
+    // like the yaw is. The yaw needs a turn rate because it has to survive a
+    // hazard reversing at the end of a sweep, which is a 180 flip; pitch on
+    // an arc only ever changes smoothly and continuously, so easing it would
+    // just make the spear lag behind the path it is visibly on.
+    facingPitchDegrees = pitchTarget;
+
+    if (!facingInitialised)
+    {
+        facingDegrees = target;
+        facingInitialised = true;
+    }
+    else
+    {
+        // Shortest way round, so a heading crossing the +/-180 seam turns
+        // the short way instead of spinning all the way back through zero.
+        float delta = target - facingDegrees;
+
+        while (delta > 180.0f)
+            delta -= 360.0f;
+
+        while (delta < -180.0f)
+            delta += 360.0f;
+
+        const float maxStep = TurnDegreesPerSecond * deltaTime;
+
+        facingDegrees += glm::clamp(delta, -maxStep, maxStep);
+    }
+
+    visual->GetTransform().SetRotation(
+        0.0f,
+        facingDegrees,
+        facingPitchDegrees);
+}
+
 void MovingHazard::EnableRolling(float radius, RollAxisMode axisMode)
 {
     rollingEnabled = true;
+
+    // A rolling rock or log writes its own rotation every frame, so the
+    // facing pass has to stand down or the two fight over the transform.
+    facesTravel = false;
     rollingPivotHeight = std::max(radius, 0.0001f);
     rollingMotion.SetRadius(radius);
     rollingMotion.SetAxisMode(axisMode);
@@ -169,7 +293,9 @@ void MovingHazard::Update(float deltaTime, const glm::vec3& targetGroundPosition
         break;
 
     case HazardMovementPattern::WarningThenStrike:
-        UpdateWarningThenStrike(deltaTime);
+        // Needs the target for the same reason FollowTarget does: it has to
+        // know where the player is at the instant the countdown ends.
+        UpdateWarningThenStrike(deltaTime, targetGroundPosition);
         break;
 
     case HazardMovementPattern::TemporaryZone:
@@ -180,6 +306,11 @@ void MovingHazard::Update(float deltaTime, const glm::vec3& targetGroundPosition
         UpdateFollowTarget(deltaTime, targetGroundPosition);
         break;
     }
+
+    // Last, so it reads the velocity the pattern above has just settled on.
+    // One pass for every pattern rather than one per pattern: the rule is
+    // the same whichever way the hazard decided to move.
+    UpdateFacing(deltaTime);
 }
 
 void MovingHazard::UpdateLinearSweep(float deltaTime)
@@ -271,29 +402,72 @@ void MovingHazard::UpdateArcProjectile(float deltaTime)
         expired = true;
 }
 
-void MovingHazard::UpdateWarningThenStrike(float deltaTime)
+void MovingHazard::UpdateWarningThenStrike(
+    float deltaTime,
+    const glm::vec3& targetGroundPosition)
 {
+    if (lightningPhase == LightningPhase::Finished)
+        return;
+
     phaseElapsed += deltaTime;
     velocity = glm::vec3(0.0f);
 
-    if (active)
+    if (lightningPhase == LightningPhase::Warning)
     {
-        // Currently striking; check whether the strike window is over.
-        if (phaseElapsed >= strikeDuration)
-        {
-            active = false;
-            phaseElapsed = 0.0f;
-        }
+        if (phaseElapsed < warningDuration)
+            return;
+
+        // The countdown has just hit zero. Everything about this strike is
+        // decided here, in this one frame, and never revisited:
+        //
+        //   - was the player inside the marked area?
+        //   - if so, exactly where were they standing?
+        //
+        // Sampling once is what makes the rule honest in both directions.
+        // A player who left in time cannot be dragged back by a bolt that
+        // re-checks later, and a player who stayed cannot dodge it by
+        // sprinting out during the strike animation.
+        const glm::vec3 offset = targetGroundPosition - groundPositionOfVisual();
+
+        const float distance = glm::length(
+            glm::vec3(offset.x, 0.0f, offset.z));
+
+        caughtTarget = distance <= catchRadius;
+
+        // Caught: the bolt comes down on them, wherever that was. Escaped:
+        // it falls on the marker, harmlessly, so the telegraph still pays
+        // off visually instead of just evaporating.
+        strikePosition = caughtTarget
+            ? targetGroundPosition
+            : groundPositionOfVisual();
+
+        strikeHitPending = caughtTarget;
+
+        lightningPhase = LightningPhase::Strike;
+        phaseElapsed = 0.0f;
+
+        // Only a strike that actually caught someone is dangerous. A missed
+        // strike stays inactive so no collision pass can find damage in it.
+        active = caughtTarget;
+
+        return;
     }
-    else
+
+    // Striking. The visual plays out for its full window either way; only
+    // the damage was conditional.
+    if (phaseElapsed >= strikeDuration)
     {
-        // Currently telegraphing; check whether it's time to strike.
-        if (phaseElapsed >= warningDuration)
-        {
-            active = true;
-            phaseElapsed = 0.0f;
-        }
+        lightningPhase = LightningPhase::Finished;
+        active = false;
+        expired = true;
     }
+}
+
+const glm::vec3& MovingHazard::groundPositionOfVisual() const
+{
+    static const glm::vec3 origin = glm::vec3(0.0f);
+
+    return visual ? visual->GetGroundPosition() : origin;
 }
 
 void MovingHazard::UpdateTemporaryZone(float deltaTime)
@@ -310,7 +484,7 @@ void MovingHazard::UpdateFollowTarget(
 {
     const glm::vec3 currentPosition = visual->GetGroundPosition();
 
-    // Chases across the ground plane only; height-following (if the cow
+    // Chases across the ground plane only; height-following (if the sheep
     // needs to cross lanes of different surface height) is left to
     // whatever places it, the same way the pawn follows terrain itself.
     glm::vec3 toTarget = targetGroundPosition - currentPosition;
@@ -318,18 +492,56 @@ void MovingHazard::UpdateFollowTarget(
 
     const float distance = glm::length(toTarget);
 
-    if (distance < 0.01f)
+    // Detection gate: the sheep grazes until the player wanders within
+    // range, and gives up once the player gets far enough away again. This
+    // is what stops it beelining across the whole field from the moment it
+    // spawns.
+    if (distance > followDetectionRange)
+    {
+        following = false;
+        velocity = glm::vec3(0.0f);
+        return;
+    }
+
+    following = true;
+
+    // Standoff: close the gap only while further than followDistance, and
+    // stop once inside it, so the sheep trails the player at a distance
+    // instead of overlapping. A small band below followDistance is left
+    // alone rather than corrected, so it doesn't jitter forward-and-back on
+    // the boundary while the player stands still.
+    if (distance <= followDistance)
     {
         velocity = glm::vec3(0.0f);
         return;
     }
 
     const glm::vec3 direction = toTarget / distance;
-    const float step = std::min(followMaxSpeed * deltaTime, distance);
+
+    // Never overshoot the standoff ring in a single step: clamp the move to
+    // whatever distance remains between here and followDistance out from the
+    // target.
+    const float distanceToRing = distance - followDistance;
+    const float step = std::min(followMaxSpeed * deltaTime, distanceToRing);
 
     velocity = direction * followMaxSpeed;
 
-    MoveVisualTo(currentPosition + direction * step);
+    glm::vec3 next = currentPosition + direction * step;
+
+    // Leash. Rows run toward -Z, so this is the furthest along the level the
+    // hazard may chase. Without it a follower simply walks into whatever
+    // comes next -- a cow tailing the player into a section that is supposed
+    // to hold nothing but fireballs and lightning.
+    if (next.z < followMinZ)
+    {
+        next.z = followMinZ;
+
+        // Report what it is actually doing, so a leashed follower pressed
+        // against its limit does not read as still charging forward.
+        velocity.z = 0.0f;
+    }
+
+    MoveVisualTo(next);
 }
 
 void MovingHazard::MoveVisualTo(const glm::vec3& groundPosition)
@@ -389,6 +601,11 @@ const GroundEntity& MovingHazard::GetVisual() const
     return *visual;
 }
 
+const std::shared_ptr<GroundEntity>& MovingHazard::GetVisualShared() const
+{
+    return visual;
+}
+
 const glm::vec3& MovingHazard::GetVelocity() const
 {
     return velocity;
@@ -407,4 +624,88 @@ bool MovingHazard::HasExpired() const
 HazardMovementPattern MovingHazard::GetMovementPattern() const
 {
     return pattern;
+}
+
+float MovingHazard::GetPhaseElapsed() const
+{
+    return phaseElapsed;
+}
+
+float MovingHazard::GetWarningDuration() const
+{
+    return warningDuration;
+}
+
+float MovingHazard::GetStrikeDuration() const
+{
+    return strikeDuration;
+}
+
+float MovingHazard::GetCurveElapsed() const
+{
+    return curveElapsed;
+}
+
+float MovingHazard::GetCurveDuration() const
+{
+    return curveDuration;
+}
+
+LightningPhase MovingHazard::GetLightningPhase() const
+{
+    return lightningPhase;
+}
+
+float MovingHazard::GetCatchRadius() const
+{
+    return catchRadius;
+}
+
+const glm::vec3& MovingHazard::GetStrikePosition() const
+{
+    return strikePosition;
+}
+
+bool MovingHazard::DidCatchTarget() const
+{
+    return caughtTarget;
+}
+
+bool MovingHazard::ConsumeStrikeHit()
+{
+    if (!strikeHitPending)
+        return false;
+
+    strikeHitPending = false;
+    return true;
+}
+
+float MovingHazard::GetArcElapsed() const
+{
+    return arcElapsed;
+}
+
+float MovingHazard::GetArcDuration() const
+{
+    return arcDuration;
+}
+
+float MovingHazard::GetArcGroundHeight() const
+{
+    return arcStart.y;
+}
+
+const glm::vec3& MovingHazard::GetArcLandingPosition() const
+{
+    return arcEnd;
+}
+
+float MovingHazard::GetZoneElapsed() const
+{
+    return zoneElapsed;
+}
+
+float MovingHazard::GetZoneDuration() const
+{
+    return zoneDuration;
 }

@@ -62,6 +62,25 @@ enum class HazardMovementPattern
     FollowTarget
 };
 
+/// Which stage of its life a WarningThenStrike hazard is in.
+///
+/// Only lightning uses this. The pattern used to cycle warning and strike
+/// forever, which meant it had no moment of resolution to hang a decision on
+/// - and the whole point of lightning is that one instant when the countdown
+/// hits zero and the player either got clear or did not.
+enum class LightningPhase
+{
+    /// Telegraphing. The marker is on the ground and nothing is dangerous.
+    Warning,
+
+    /// The bolt is down. Whether it caught anyone was decided at the moment
+    /// this phase began, not continuously.
+    Strike,
+
+    /// Done. The hazard has expired and its owner should drop it.
+    Finished
+};
+
 /// Moves one hazard's visual according to its configured pattern.
 class MovingHazard
 {
@@ -103,12 +122,25 @@ public:
         float duration,
         float arcHeight);
 
-    /// Stays at groundPosition. Cycles a warning phase (not active) and a
-    /// strike phase (active) forever; never expires on its own.
+    /// Stays at groundPosition and telegraphs for warningDuration, then
+    /// strikes for strikeDuration and expires.
+    ///
+    /// catchRadius is the marked area. At the instant the warning ends, the
+    /// target passed to Update is tested against it once: inside means the
+    /// strike lands on the target's position at that moment and DidCatchTarget
+    /// reports true; outside means the strike falls harmlessly on the marker's
+    /// own centre and nothing is damaged. Moving away afterwards cannot undo
+    /// a hit, and staying still afterwards cannot cause one - the decision
+    /// belongs to that single frame.
+    ///
+    /// This used to loop warning and strike forever. It now finishes, so
+    /// repeated lightning comes from a repeating spawn like every other
+    /// hazard rather than from one immortal object.
     void SetWarningThenStrike(
         const glm::vec3& groundPosition,
         float warningDuration,
-        float strikeDuration);
+        float strikeDuration,
+        float catchRadius);
 
     /// Stays at groundPosition and is active for duration, then expires.
     /// Used for the fireball's residual fire patch.
@@ -116,15 +148,64 @@ public:
         const glm::vec3& groundPosition,
         float duration);
 
-    /// Chases whatever position Update() is given, capped to maxSpeed.
-    /// The visual's current ground position (set by the caller beforehand,
-    /// e.g. via CreateObstacle(...)->SetGroundPosition(...)) is where it
-    /// starts from.
-    void SetFollowTarget(float maxSpeed);
+    /// Chases a target with simple "sheep" AI (per the refinement task):
+    ///
+    ///   - It ignores the target until the target comes within
+    ///     detectionRange. Before that it stands still, and once the
+    ///     target leaves that range again it stops and waits.
+    ///   - Once following, it holds followDistance from the target rather
+    ///     than sticking to it: it closes the gap only while further away
+    ///     than that, and stops once it's within it.
+    ///
+    /// maxSpeed caps how fast it moves while closing. The visual's current
+    /// ground position (set by the caller beforehand, e.g. via
+    /// CreateObstacle(...)->SetGroundPosition(...)) is where it starts from.
+    ///
+    /// detectionRange <= followDistance would mean "notice and stop at the
+    /// same time" (it would never take a step), so callers should keep
+    /// detectionRange comfortably larger than followDistance.
+    void SetFollowTarget(
+        float maxSpeed,
+        float detectionRange,
+        float followDistance);
+
+    /// True once the target has come within detection range and the sheep
+    /// has begun following. Exposed so animation (John) or collision
+    /// (Kaung) can tell an alert, moving sheep from an idle grazing one.
+    bool IsFollowing() const;
+
+    /// Furthest along the level a follower may chase, as a world Z.
+    ///
+    /// Rows run toward -Z, so this is a floor on Z rather than a ceiling. It
+    /// exists because a follower otherwise has no idea which section it
+    /// belongs to: it will happily tail the player out of its own woodland
+    /// and into the finale, which is meant to hold nothing but fireballs and
+    /// lightning. Defaults to no limit.
+    void SetFollowLimitZ(float minimumZ);
 
     /// Connects the visual-only rolling component to this mover. Translation
     /// remains owned here; RollingMotion derives spin from the actual distance
     /// travelled so speed changes and reversals stay visually correct.
+    //---------------------------------------------------------
+    // Facing
+    //---------------------------------------------------------
+
+    /// Turns the visual to face the way it is travelling.
+    ///
+    /// On by default. Every hazard model with a nose - the arrow, the spear,
+    /// the cow - is authored pointing +X, so one rule serves all of them.
+    ///
+    /// This is what stops the cow permanently facing whichever way it was
+    /// placed while it chases the player around, and what turns a looping
+    /// arrow round on its return leg instead of flying it tail-first.
+    ///
+    /// Automatically disabled by EnableRolling: a rolling rock or log
+    /// already owns its rotation, and two systems writing the same transform
+    /// would fight every frame.
+    void SetFacesTravel(bool facesTravel);
+
+    bool GetFacesTravel() const;
+
     void EnableRolling(float radius, RollAxisMode axisMode);
 
     //-----------------------------------------------------------
@@ -137,6 +218,11 @@ public:
     GroundEntity& GetVisual();
 
     const GroundEntity& GetVisual() const;
+
+    /// Shared ownership of the visual, for the rare caller that needs it to
+    /// outlive the hazard - a removed cow still has a death animation to
+    /// finish after this object is gone.
+    const std::shared_ptr<GroundEntity>& GetVisualShared() const;
 
     /// World-space velocity this frame. Zero while a WarningThenStrike
     /// hazard is standing still (which is always, for that pattern).
@@ -154,6 +240,76 @@ public:
 
     HazardMovementPattern GetMovementPattern() const;
 
+    /// Current time inside the warning or strike phase. Only meaningful for
+    /// WarningThenStrike hazards such as lightning.
+    float GetPhaseElapsed() const;
+
+    float GetWarningDuration() const;
+
+    float GetStrikeDuration() const;
+
+    //-----------------------------------------------------------
+    // Lightning resolution
+    //
+    // All four are only meaningful for WarningThenStrike.
+    //-----------------------------------------------------------
+
+    LightningPhase GetLightningPhase() const;
+
+    /// Radius of the marked area.
+    float GetCatchRadius() const;
+
+    /// Where the bolt actually comes down: the target's position at the
+    /// instant the countdown hit zero if it was caught, otherwise the
+    /// marker's own centre.
+    ///
+    /// Fixed once the strike begins. The effect must not follow the target
+    /// after the fact, so this deliberately stops tracking.
+    const glm::vec3& GetStrikePosition() const;
+
+    /// Whether the strike caught the target. False for the whole warning
+    /// phase, and false forever after a strike that missed.
+    bool DidCatchTarget() const;
+
+    /// True exactly once, on the frame a strike lands on the target.
+    ///
+    /// Consumed rather than polled so damage is applied a single time no
+    /// matter how many frames the strike visual lasts, which is what keeps
+    /// one bolt to one hit without the collision system tracking that
+    /// itself.
+    bool ConsumeStrikeHit();
+
+    /// Progress for curved projectiles such as spears.
+    float GetCurveElapsed() const;
+
+    float GetCurveDuration() const;
+
+    /// Progress for lobbed projectiles such as fireballs. Lets an effect
+    /// pick an animation frame from how far through its flight the
+    /// projectile is, without duplicating the trajectory maths.
+    float GetArcElapsed() const;
+
+    float GetArcDuration() const;
+
+    /// Surface height the lob was launched from and lands back on.
+    ///
+    /// The visual's own position carries the parabola, so it is no use for
+    /// answering "where is the ground under this". A shadow needs that
+    /// separately, and subtracting the two is also how far up the projectile
+    /// currently is.
+    float GetArcGroundHeight() const;
+
+    /// Where the lob is aimed to come down.
+    ///
+    /// Known from the moment it is launched, which is what lets an effect
+    /// mark the landing spot while the projectile is still in the air.
+    const glm::vec3& GetArcLandingPosition() const;
+
+    /// Progress for temporary zones such as the fireball's lingering impact.
+    float GetZoneElapsed() const;
+
+    float GetZoneDuration() const;
+
 private:
 
     void UpdateLinearSweep(float deltaTime);
@@ -162,13 +318,19 @@ private:
 
     void UpdateArcProjectile(float deltaTime);
 
-    void UpdateWarningThenStrike(float deltaTime);
+    void UpdateWarningThenStrike(
+        float deltaTime,
+        const glm::vec3& targetGroundPosition);
 
     void UpdateTemporaryZone(float deltaTime);
 
     void UpdateFollowTarget(float deltaTime, const glm::vec3& targetGroundPosition);
 
     void MoveVisualTo(const glm::vec3& groundPosition);
+
+    /// The visual's ground position, or the origin if it has none. Saves
+    /// repeating the null check inside the strike resolution.
+    const glm::vec3& groundPositionOfVisual() const;
 
     std::shared_ptr<GroundEntity> visual;
 
@@ -179,6 +341,25 @@ private:
     bool active = true;
 
     bool expired = false;
+
+    /// Turns the visual toward its current velocity at a fixed rate.
+    void UpdateFacing(float deltaTime);
+
+    /// Whether the visual turns to match its travel direction.
+    bool facesTravel = true;
+
+    /// Current smoothed heading in degrees, and whether it has been set at
+    /// least once. The first heading is snapped rather than turned toward,
+    /// so a hazard does not visibly swing round on the frame it spawns.
+    float facingDegrees = 0.0f;
+
+    /// Nose-up angle, in degrees, taken from the vertical component of
+    /// travel. Zero for anything moving along the ground, which is every
+    /// hazard except a thrown one - so this costs the flat movers nothing
+    /// and needs no per-type branching.
+    float facingPitchDegrees = 0.0f;
+
+    bool facingInitialised = false;
 
     bool rollingEnabled = false;
 
@@ -218,6 +399,16 @@ private:
     float strikeDuration = 1.0f;
     float phaseElapsed = 0.0f;
 
+    LightningPhase lightningPhase = LightningPhase::Warning;
+
+    float catchRadius = 1.0f;
+
+    glm::vec3 strikePosition = glm::vec3(0.0f);
+
+    bool caughtTarget = false;
+
+    bool strikeHitPending = false;
+
     // --- TemporaryZone ---
 
     float zoneDuration = 1.0f;
@@ -226,4 +417,19 @@ private:
     // --- FollowTarget ---
 
     float followMaxSpeed = 2.0f;
+
+    /// How close the target must come before the sheep starts following.
+    float followDetectionRange = 5.0f;
+
+    /// The gap the sheep tries to keep once following, so it trails the
+    /// target rather than overlapping it.
+    float followDistance = 1.5f;
+
+    /// Latched true the first time the target enters detection range, and
+    /// back to false whenever the target is outside it again.
+    bool following = false;
+
+    /// Furthest along the level this follower may chase. Effectively no
+    /// limit until a caller sets one.
+    float followMinZ = -1.0e9f;
 };

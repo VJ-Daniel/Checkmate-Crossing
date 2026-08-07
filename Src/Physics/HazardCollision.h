@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 #include <functional>
 
@@ -43,8 +44,12 @@ public:
         const std::vector<std::shared_ptr<StaticObstacle>>& hazards);
 
     /// Check if the pawn is in a danger zone (fire, lightning)
+    ///
+    /// Needs deltaTime because floor fire burns on its own once-per-second
+    /// schedule rather than on the shared hit cooldown.
     void CheckAreaHazards(
-        const std::vector<std::unique_ptr<MovingHazard>>& hazards);
+        const std::vector<std::unique_ptr<MovingHazard>>& hazards,
+        float deltaTime);
 
     /// Get the pawn's collision component for other checks
     CollisionComponent& GetPawnCollision() { return pawnCollision; }
@@ -79,6 +84,24 @@ private:
 
     float damageCooldown = 0.5f;
     float damageCooldownRemaining = 0.0f;
+
+    /// How long the pawn has been standing in each floor fire it is
+    /// currently touching, keyed by the hazard itself.
+    ///
+    /// Per hazard rather than one global timer so two overlapping patches
+    /// each keep their own schedule, and per contact rather than per fire so
+    /// stepping out and back in starts the burn over instead of resuming
+    /// mid-count. Entries for fires the pawn is no longer standing in are
+    /// dropped every frame, which is what makes leaving reset it.
+    std::unordered_map<const MovingHazard*, float> fireContactTimers;
+
+    /// Applies one floor-fire tick if this patch is due, and advances or
+    /// resets its timer. Returns whether the pawn is standing in it, so the
+    /// caller can retire the timers of the ones they left.
+    bool UpdateFloorFireContact(
+        const MovingHazard& hazard,
+        const glm::vec3& pawnPosition,
+        float deltaTime);
 
     // Apply damage and/or knockback to the pawn (with cooldown check).
     bool ApplyDamage(

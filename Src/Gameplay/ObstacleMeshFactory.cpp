@@ -439,10 +439,13 @@ namespace ObstacleMeshFactory
         }
 
         case HazardType::Fireball:
+        case HazardType::FloorFire:
+        case HazardType::SpearImpact:
         case HazardType::Lightning:
-            // Gameplay support is present, but these visuals are intentionally
-            // deferred to sprites/billboards. Do not manufacture an empty 3D
-            // mesh: a null mesh is the explicit "no visual yet" state.
+            // These are drawn as sprites, not meshes: Game owns their frames
+            // and rebuilds them every Render from the hazard's timing state.
+            // Do not manufacture a 3D mesh here - a null mesh is what keeps
+            // the mesh pass from drawing a second, competing visual.
             return model;
         }
 

@@ -108,8 +108,8 @@ namespace ObstacleMeshFactory
     ObstacleModel Create(ObstacleType type);
 
     /// Fireball and Lightning intentionally return a model without a mesh;
-    /// their gameplay identifiers remain available while their future sprite
-    /// visuals stay outside this 3D factory.
+    /// their gameplay identifiers remain available while their sprite visuals
+    /// are owned by Game, outside this 3D factory.
     ObstacleModel Create(HazardType type);
 }
 

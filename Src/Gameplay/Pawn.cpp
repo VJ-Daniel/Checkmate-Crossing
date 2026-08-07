@@ -17,6 +17,7 @@
 
 #include "Pawn.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream> // Added for debug output
 
@@ -35,6 +36,16 @@ namespace
         static const std::vector<std::shared_ptr<SceneNode>> empty;
 
         return empty;
+    }
+
+    PieceType VisualCharacterForAbility(PieceType abilityType)
+    {
+        // The Knight pickup represents the horse ability, but the playable
+        // visual is the pawn riding that horse.
+        if (abilityType == PieceType::Knight)
+            return PieceType::MountedPawn;
+
+        return abilityType;
     }
 }
 
@@ -197,59 +208,37 @@ void Pawn::HandleInput()
     // running while the pawn is held against a wall.
     movementInputActive = glm::length(direction) > 0.0f;
 
-    // Knockback overrides input while it lasts, so a hit actually pushes the
-    // pawn instead of being cancelled by whatever key is held.
+    // Knockback overrides input while it lasts.
     if (knockbackTimer <= 0.0f)
     {
         velocity = direction * moveSpeed * GetSpeedMultiplier();
     }
     else
     {
-        // Bleed the bounce off smoothly rather than stopping dead.
         velocity *= 0.95f;
-
-        if (glm::length(velocity) < 0.01f)
-            velocity = glm::vec3(0.0f);
+        if (glm::length(velocity) < 0.01f) velocity = glm::vec3(0.0f);
     }
 
     if (glm::length(direction) > 0.0f && knockbackTimer <= 0.0f)
     {
-        // Y-heading toward the movement direction.
-        //
-        // Every piece model is authored facing +Z (see PieceMeshFactory),
-        // and a Y rotation of theta carries +Z round to
-        // (sin theta, 0, cos theta). Pointing that at the travel direction
-        // is therefore atan2(x, z), with no negation on either term.
-        //
-        // The negated Z is the orientation bug that was fixed after Kaung
-        // branched: it inverted forward against backward while leaving left
-        // and right correct.
-        const float headingDegrees =
-            glm::degrees(std::atan2(direction.x, direction.z));
-
+        const float headingDegrees = glm::degrees(std::atan2(direction.x, direction.z));
         transform.SetRotation(0.0f, headingDegrees, 0.0f);
     }
 
-    // Space jumps. Kaung's branch had repurposed it to fire abilities,
-    // because it predates the jump landing on the shared branch - but E
-    // already resolves abilities (see ConsumeInteractPulse), and removing
-    // the jump would take Ayub's movement and the jump animations with it.
+    // SPACE: Jump
     const bool spaceDown = Input::IsKeyPressed(Key::Space);
-
     if (spaceDown && !spaceKeyWasDown)
         TryJump();
-
     spaceKeyWasDown = spaceDown;
 
-    // E is the interact button. What it actually does -- open a nearby
-    // door/gate, or fall back to activating a stored ability -- depends on
-    // the wider level, which this class has no reference to. It just
-    // reports the press; see the class comment on ConsumeInteractPulse().
+    // E: Interact OR Activate Banked Ability
+    // We set a pulse here. Game.cpp will check for doors/gates first.
+    // If you're not near a door/gate, Game.cpp falls back to TryActivateAbility().
     const bool interactDown = Input::IsKeyPressed(Key::E);
-
     if (interactDown && !interactKeyWasDown)
+    {
         interactPulsePending = true;
-
+    }
     interactKeyWasDown = interactDown;
 }
 
@@ -295,6 +284,7 @@ bool Pawn::GetCharacterAbility(
     case PieceType::Bishop:
     case PieceType::Rook:
     case PieceType::Queen:
+    case PieceType::Knight:
         abilityType = character;
         return true;
 
@@ -316,6 +306,7 @@ void Pawn::ClearAbilityState()
 {
     abilityActive = false;
     abilityTimeRemaining = 0.0f;
+    abilityVisualTimeRemaining = 0.0f;
     shieldAvailable = false;
     hasStoredPiece = false;
     bishopPulsePending = false;
@@ -325,15 +316,32 @@ void Pawn::SetCharacter(
     PieceType newCharacter,
     PieceMeshLibrary& meshLibrary)
 {
+    if (!SetVisualCharacter(newCharacter, meshLibrary))
+        return;
+
+    // Nothing of the previous character survives - no lingering shield, no
+    // stale immunity, no unused pickup.
+    ClearAbilityState();
+
+    PieceType ability = PieceType::Bishop;
+
+    if (GetCharacterAbility(newCharacter, ability))
+        CollectPiece(ability);
+}
+
+bool Pawn::SetVisualCharacter(
+    PieceType newCharacter,
+    PieceMeshLibrary& meshLibrary)
+{
     // The riderless horse is a collectible, not a body the player wears.
     if (newCharacter == PieceType::Knight)
-        return;
+        return false;
 
     const PieceMeshFactory::PieceRigModel& rigModel =
         meshLibrary.GetRigModel(newCharacter);
 
     if (!rigModel.valid)
-        return;
+        return false;
 
     character = newCharacter;
 
@@ -366,17 +374,29 @@ void Pawn::SetCharacter(
     // switching character cannot move the player.
     SetMesh(nullptr);
 
-    // Nothing of the previous character survives - no lingering shield, no
-    // stale immunity, no half-finished stride.
-    ClearAbilityState();
-
-    PieceType ability = PieceType::Bishop;
-
-    if (GetCharacterAbility(newCharacter, ability))
-        CollectPiece(ability);
-
     UpdateShadow();
     UpdateAnimation(0.0f);
+
+    return true;
+}
+
+void Pawn::ApplyAbilityVisual(PieceType abilityType)
+{
+    if (!meshLibrary)
+        return;
+
+    SetVisualCharacter(
+        VisualCharacterForAbility(abilityType),
+        *meshLibrary);
+}
+
+void Pawn::RestorePawnVisual()
+{
+    if (!meshLibrary)
+        return;
+
+    abilityVisualTimeRemaining = 0.0f;
+    SetVisualCharacter(PieceType::Pawn, *meshLibrary);
 }
 
 PieceType Pawn::GetCharacter() const
@@ -392,14 +412,6 @@ const std::vector<std::shared_ptr<SceneNode>>& Pawn::GetRigParts() const
 bool Pawn::IsGrounded() const
 {
     // Straight off the jump state, which is the authority on this.
-    //
-    // Before the jump system landed this had to infer being airborne from
-    // the pawn's height above its lane, because nothing in the project
-    // applied gravity or vertical velocity. Now that something does, the
-    // animation reads that rather than re-deriving it: two answers to "is
-    // the pawn on the ground" is one more than there should be, and the
-    // inferred one needed a tolerance that would have delayed the jump pose
-    // until the pawn was already a couple of centimetres up.
     return !isAirborne;
 }
 
@@ -497,27 +509,12 @@ void Pawn::CollectPiece(PieceType type)
     hasStoredPiece = true;
     storedPieceType = type;
 
-    // =========================================================
-    // THE FIX: SWAP THE MESH TO THE COLLECTED PIECE!
-    // =========================================================
-    if (meshLibrary)
-    {
-        // Create a temporary chess piece model
-        auto newMesh = meshLibrary->CreatePiece(type, PieceTeam::White);
-
-        // Steal its mesh and apply it to our pawn
-        SetMesh(newMesh->GetMesh());
-
-        // Set the team color of the piece
-        SetColor(newMesh->GetColor());
-
-        // Resize it to fit the pawn's scale
-        float pieceScale = GameConfig::PieceScale;
-        transform.SetScale(pieceScale, pieceScale, pieceScale);
-    }
-    // =========================================================
-
-    std::cout << "Pawn transformed into a " << GetPieceTypeName(type) << "!" << std::endl;
+    // Stored, not worn. Transforming here is what the pickup used to do,
+    // but the model change belongs to activation now (ApplyAbilityVisual),
+    // so collecting a piece banks it and pressing E is what puts it on.
+    std::cout
+        << "Stored " << GetPieceTypeName(type)
+        << " ability. Press E to activate." << std::endl;
 }
 
 bool Pawn::HasStoredPiece() const
@@ -538,61 +535,80 @@ void Pawn::TryActivateAbility()
     activeAbilityType = storedPieceType;
     hasStoredPiece = false;
 
+    ApplyAbilityVisual(activeAbilityType);
+
     switch (activeAbilityType)
     {
     case PieceType::Knight:
-
         // Speed boost and hazard immunity for a fixed duration.
         abilityActive = true;
         abilityTimeRemaining = GameConfig::KnightAbilityDuration;
         shieldAvailable = false;
+
+        std::cout << "  Knight: Speed Boost + Immunity Active (" << abilityTimeRemaining << "s)" << std::endl;
         break;
 
     case PieceType::Rook:
-
-        // A single shield charge; ConsumeShield() ends this early once
-        // it actually blocks a hit.
+        // A single shield charge; ConsumeShield() ends this early once it blocks.
         abilityActive = true;
         abilityTimeRemaining = GameConfig::RookShieldDuration;
         shieldAvailable = true;
+        std::cout << "  Rook: Shield Active (Duration: " << abilityTimeRemaining << "s)" << std::endl;
         break;
 
     case PieceType::Queen:
 
-        // Knight's speed/immunity plus Rook's shield together, for a
-        // shorter duration -- the GDD's "combines multiple abilities."
+        // All three at once, for a shorter duration -- the GDD's "combines
+        // multiple abilities."
+        //
+        // The speed boost and the hazard immunity come from
+        // GetSpeedMultiplier and IsImmuneToHazards, which both already test
+        // for Queen as well as Knight; the shield comes from HasShield,
+        // which only needs the flag below. The Bishop's clearing pulse was
+        // the one part missing: it fires once rather than running on a
+        // timer, so it has to be raised here the same way the Bishop case
+        // raises it, and it is the reason the Queen looked like she only
+        // had the Knight's ability.
         abilityActive = true;
         abilityTimeRemaining = GameConfig::QueenAbilityDuration;
         shieldAvailable = true;
+        bishopPulsePending = true;
         break;
 
     case PieceType::Bishop:
 
-        // Instant effect: no ongoing timer, just a one-shot pulse for
-        // whoever owns HazardManager (currently Game) to react to.
+        // Instant gameplay effect: a one-shot pulse for whoever owns
+        // HazardManager (currently Game) to react to. The visual lingers
+        // briefly so the ability still reads on screen.
         abilityActive = false;
         bishopPulsePending = true;
+        abilityVisualTimeRemaining = GameConfig::BishopVisualLingerDuration;
         break;
 
     default:
-
-        // Pawn/King/MountedPawn are never valid collectibles; CollectPiece
-        // already filters these out, so this shouldn't be reachable.
         break;
     }
 }
 
 void Pawn::UpdateAbility(float deltaTime)
 {
-    if (!abilityActive)
-        return;
-
-    abilityTimeRemaining -= deltaTime;
-
-    if (abilityTimeRemaining <= 0.0f)
+    if (abilityActive)
     {
-        abilityActive = false;
-        shieldAvailable = false;
+        abilityTimeRemaining -= deltaTime;
+
+        if (abilityTimeRemaining <= 0.0f)
+        {
+            abilityActive = false;
+            shieldAvailable = false;
+            RestorePawnVisual();
+        }
+    }
+    else if (abilityVisualTimeRemaining > 0.0f)
+    {
+        abilityVisualTimeRemaining -= deltaTime;
+
+        if (abilityVisualTimeRemaining <= 0.0f)
+            RestorePawnVisual();
     }
 }
 
@@ -604,6 +620,34 @@ bool Pawn::IsAbilityActive() const
 PieceType Pawn::GetActiveAbilityType() const
 {
     return activeAbilityType;
+}
+
+float Pawn::GetAbilityDurationFraction() const
+{
+    if (!abilityActive)
+        return 0.0f;
+
+    float maxDuration = 0.0f;
+
+    switch (activeAbilityType)
+    {
+    case PieceType::Knight:
+        maxDuration = GameConfig::KnightAbilityDuration;
+        break;
+    case PieceType::Rook:
+        maxDuration = GameConfig::RookShieldDuration;
+        break;
+    case PieceType::Queen:
+        maxDuration = GameConfig::QueenAbilityDuration;
+        break;
+    default:
+        return 0.0f;
+    }
+
+    if (maxDuration <= 0.0f)
+        return 0.0f;
+
+    return std::clamp(abilityTimeRemaining / maxDuration, 0.0f, 1.0f);
 }
 
 float Pawn::GetSpeedMultiplier() const
@@ -632,6 +676,8 @@ bool Pawn::HasShield() const
 
 void Pawn::ConsumeShield()
 {
+    std::cout << "  > SHIELD BLOCKED A HIT! <" << std::endl;
+
     shieldAvailable = false;
 
     // A consumed Rook shield was the entire ability, so it ends outright.
@@ -641,6 +687,7 @@ void Pawn::ConsumeShield()
     {
         abilityActive = false;
         abilityTimeRemaining = 0.0f;
+        RestorePawnVisual();
     }
 }
 
@@ -650,6 +697,15 @@ bool Pawn::ConsumeBishopActivationPulse()
         return false;
 
     bishopPulsePending = false;
+    return true;
+}
+
+bool Pawn::ConsumeDeathPulse()
+{
+    if (!deathPulsePending)
+        return false;
+
+    deathPulsePending = false;
     return true;
 }
 
@@ -719,23 +775,14 @@ void Pawn::Respawn()
         spawnPosition.z);
 
     // --- RESET HEALTH ON RESPAWN ---
-    health = 5.0f;
+    health = GameConfig::MaxPawnHealth;
     // --- CLEAR KNOCKBACK ---
     velocity = glm::vec3(0.0f);
     knockbackTimer = 0.0f;
     // ------------------------------
 
-    // =========================================
-    // REVERT MESH, SIZE, AND COLOR BACK TO NORMAL
-    // =========================================
-    SetMesh(Mesh::CreateCube()); // <-- Change back to a cube
-    SetColor(GameConfig::PawnColor); // Revert to original white color
-    transform.SetScale(
-        GameConfig::PawnWidth,
-        GameConfig::PawnHeight,
-        GameConfig::PawnWidth
-    );
-    // =========================================
+    ClearAbilityState();
+    RestorePawnVisual();
 
     UpdateShadow();
 }
@@ -775,6 +822,7 @@ void Pawn::TakeDamage(float damage)
     {
         health = 0.0f;
         std::cout << "Pawn has died! Respawning..." << std::endl;
+        deathPulsePending = true;
         Respawn();
     }
 }

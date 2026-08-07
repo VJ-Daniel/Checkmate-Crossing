@@ -87,12 +87,14 @@ MovingHazard& HazardManager::SpawnArcHazard(
 MovingHazard& HazardManager::SpawnWarningHazard(
     const glm::vec3& groundPosition,
     float warningDuration,
-    float strikeDuration)
+    float strikeDuration,
+    float catchRadius)
 {
     auto visual = meshLibrary.CreateHazard(HazardType::Lightning);
 
     auto hazard = std::make_unique<MovingHazard>(visual);
-    hazard->SetWarningThenStrike(groundPosition, warningDuration, strikeDuration);
+    hazard->SetWarningThenStrike(
+        groundPosition, warningDuration, strikeDuration, catchRadius);
 
     hazards.push_back(std::move(hazard));
 
@@ -116,49 +118,178 @@ MovingHazard& HazardManager::SpawnTemporaryZone(
 
 MovingHazard& HazardManager::SpawnCow(
     const glm::vec3& startGroundPosition,
-    float maxSpeed)
+    float maxSpeed,
+    float detectionRange,
+    float followDistance)
 {
     auto visual = meshLibrary.CreateObstacle(ObstacleType::Cow);
     visual->SetGroundPosition(startGroundPosition);
 
     auto hazard = std::make_unique<MovingHazard>(visual);
-    hazard->SetFollowTarget(maxSpeed);
+    hazard->SetFollowTarget(maxSpeed, detectionRange, followDistance);
 
     hazards.push_back(std::move(hazard));
 
     return *hazards.back();
 }
 
-int HazardManager::RemoveNearest(const glm::vec3& position, int count)
+int HazardManager::ClearStationaryObstacles(
+    std::vector<std::shared_ptr<StaticObstacle>>& obstacles,
+    const glm::vec3& origin,
+    float radius,
+    int maxCount,
+    std::vector<glm::vec3>& clearedPositions,
+    std::vector<std::shared_ptr<GroundEntity>>& removedVisuals)
 {
-    if (count <= 0)
+    if (maxCount <= 0 || radius <= 0.0f)
         return 0;
 
-    std::vector<std::size_t> order(hazards.size());
+    // Gather the eligible ones first, as indices paired with their distance,
+    // so the "which are clearable" rule and the "which are nearest" rule stay
+    // separate steps rather than one tangled predicate.
+    struct Candidate
+    {
+        std::size_t index = 0;
+        float distance = 0.0f;
+    };
 
-    for (std::size_t index = 0; index < order.size(); ++index)
-        order[index] = index;
+    std::vector<Candidate> candidates;
+
+    for (std::size_t index = 0; index < obstacles.size(); ++index)
+    {
+        const auto& obstacle = obstacles[index];
+
+        if (!obstacle ||
+            obstacle->IsStructural() ||
+            !IsAbilityClearable(obstacle->GetType()))
+        {
+            continue;
+        }
+
+        // Measured on the ground plane. Height would only ever push a tall
+        // prop out of range for being tall, which is not the intent.
+        const glm::vec3 offset =
+            obstacle->GetGroundPosition() - origin;
+
+        const float distance = glm::length(
+            glm::vec3(offset.x, 0.0f, offset.z));
+
+        if (distance <= radius)
+            candidates.push_back({ index, distance });
+    }
 
     std::sort(
-        order.begin(),
-        order.end(),
-        [&](std::size_t a, std::size_t b)
+        candidates.begin(),
+        candidates.end(),
+        [](const Candidate& a, const Candidate& b)
         {
-            const float distanceA = glm::length(
-                hazards[a]->GetVisual().GetGroundPosition() - position);
-            const float distanceB = glm::length(
-                hazards[b]->GetVisual().GetGroundPosition() - position);
-
-            return distanceA < distanceB;
+            return a.distance < b.distance;
         });
 
     const int removeCount = std::min(
-        count, static_cast<int>(order.size()));
+        maxCount, static_cast<int>(candidates.size()));
+
+    std::vector<std::size_t> toRemove;
+    toRemove.reserve(static_cast<std::size_t>(removeCount));
+
+    for (int slot = 0; slot < removeCount; ++slot)
+    {
+        const std::size_t index = candidates[slot].index;
+
+        clearedPositions.push_back(obstacles[index]->GetGroundPosition());
+
+        // Handed on rather than dropped: the prop is out of the collision
+        // and render lists immediately, but the caller keeps it alive long
+        // enough to play its death reaction.
+        removedVisuals.push_back(obstacles[index]);
+
+        toRemove.push_back(index);
+    }
 
     // Erase highest index first so earlier erasures don't shift the
     // indices still waiting to be removed.
-    std::vector<std::size_t> toRemove(
-        order.begin(), order.begin() + removeCount);
+    std::sort(toRemove.rbegin(), toRemove.rend());
+
+    for (std::size_t index : toRemove)
+        obstacles.erase(obstacles.begin() + static_cast<std::ptrdiff_t>(index));
+
+    return removeCount;
+}
+
+int HazardManager::ClearRemovableHazards(
+    const glm::vec3& origin,
+    float radius,
+    int maxCount,
+    std::vector<glm::vec3>& clearedPositions,
+    std::vector<std::shared_ptr<GroundEntity>>& removedVisuals)
+{
+    if (maxCount <= 0 || radius <= 0.0f)
+        return 0;
+
+    struct Candidate
+    {
+        std::size_t index = 0;
+        float distance = 0.0f;
+    };
+
+    std::vector<Candidate> candidates;
+
+    for (std::size_t index = 0; index < hazards.size(); ++index)
+    {
+        const auto& hazard = hazards[index];
+
+        if (!hazard || hazard->HasExpired())
+            continue;
+
+        const GroundEntity& visual = hazard->GetVisual();
+
+        // The cow is spawned from the stationary-prop mesh, so it arrives as
+        // a StaticObstacle; a hazard-typed one is checked too so this keeps
+        // working if it is ever rebuilt as a proper Hazard.
+        bool clearable = false;
+
+        if (const auto* obstacle = dynamic_cast<const StaticObstacle*>(&visual))
+            clearable = IsAbilityClearable(obstacle->GetType());
+        else if (const auto* typed = dynamic_cast<const Hazard*>(&visual))
+            clearable = IsAbilityClearable(typed->GetType());
+
+        if (!clearable)
+            continue;
+
+        const glm::vec3 offset = visual.GetGroundPosition() - origin;
+
+        const float distance = glm::length(
+            glm::vec3(offset.x, 0.0f, offset.z));
+
+        if (distance <= radius)
+            candidates.push_back({ index, distance });
+    }
+
+    std::sort(
+        candidates.begin(),
+        candidates.end(),
+        [](const Candidate& a, const Candidate& b)
+        {
+            return a.distance < b.distance;
+        });
+
+    const int removeCount = std::min(
+        maxCount, static_cast<int>(candidates.size()));
+
+    std::vector<std::size_t> toRemove;
+    toRemove.reserve(static_cast<std::size_t>(removeCount));
+
+    for (int slot = 0; slot < removeCount; ++slot)
+    {
+        const std::size_t index = candidates[slot].index;
+
+        clearedPositions.push_back(
+            hazards[index]->GetVisual().GetGroundPosition());
+
+        removedVisuals.push_back(hazards[index]->GetVisualShared());
+
+        toRemove.push_back(index);
+    }
 
     std::sort(toRemove.rbegin(), toRemove.rend());
 
@@ -170,16 +301,32 @@ int HazardManager::RemoveNearest(const glm::vec3& position, int count)
 
 void HazardManager::RegisterRepeatingSpawn(
     float interval,
-    std::function<void()> spawnFn)
+    std::function<void()> spawnFn,
+    float initialDelay)
 {
     RepeatingSpawn spawn;
     spawn.interval = interval > 0.0f ? interval : 1.0f;
     spawn.spawnFn = std::move(spawnFn);
 
-    // Fires once immediately so the lane isn't empty until the first
-    // interval elapses, then repeats every `interval` seconds from here.
-    if (spawn.spawnFn)
+    if (initialDelay > 0.0f)
+    {
+        // Start the clock partway through, so this lane's first hazard
+        // arrives `initialDelay` seconds from now rather than immediately.
+        //
+        // Every lane firing on registration means every lane fires together
+        // on the frame the level is built, and then keeps firing together
+        // wherever intervals happen to line up. That is what turns a field
+        // of independent hazards into a single wall arriving at once, which
+        // is both unreadable and, in a lane the player is funnelled into,
+        // genuinely unavoidable.
+        spawn.timer = std::max(spawn.interval - initialDelay, 0.0f);
+    }
+    else if (spawn.spawnFn)
+    {
+        // Fires once immediately so the lane isn't empty until the first
+        // interval elapses, then repeats every `interval` seconds from here.
         spawn.spawnFn();
+    }
 
     repeatingSpawns.push_back(std::move(spawn));
 }
@@ -210,19 +357,31 @@ void HazardManager::Update(float deltaTime, const glm::vec3& pawnGroundPosition)
     // GDD: "[fireballs] leave fire behind that deals continuous damage
     // over time while the player remains inside it."
     std::vector<glm::vec3> burnPositions;
+    std::vector<glm::vec3> spearImpacts;
 
     for (const auto& hazard : hazards)
     {
         if (!hazard || !hazard->HasExpired())
             continue;
 
-        const auto* fireball = dynamic_cast<const Hazard*>(&hazard->GetVisual());
+        const auto* typed = dynamic_cast<const Hazard*>(&hazard->GetVisual());
 
-        if (fireball &&
-            fireball->GetType() == HazardType::Fireball &&
-            hazard->GetMovementPattern() == HazardMovementPattern::CurvedSweep)
-        {
+        if (!typed)
+            continue;
+
+        // A projectile that finished its flight has landed. The projectile
+        // dies here and a separate zone hazard takes over at the impact
+        // point -- two objects with two lifetimes, rather than one pretending
+        // to be both.
+        if (typed->GetType() == HazardType::Fireball)
             burnPositions.push_back(hazard->GetVisual().GetGroundPosition());
+
+        // Same handover for a thrown spear, which leaves broken ground where
+        // it struck rather than fire.
+        else if (typed->GetType() == HazardType::Spear &&
+            hazard->GetMovementPattern() == HazardMovementPattern::ArcProjectile)
+        {
+            spearImpacts.push_back(hazard->GetVisual().GetGroundPosition());
         }
     }
 
@@ -239,7 +398,15 @@ void HazardManager::Update(float deltaTime, const glm::vec3& pawnGroundPosition)
     for (const glm::vec3& position : burnPositions)
     {
         SpawnTemporaryZone(
-            HazardType::Fireball, position, GameConfig::FireballBurnDuration);
+            HazardType::FloorFire, position, GameConfig::FireballBurnDuration);
+    }
+
+    for (const glm::vec3& position : spearImpacts)
+    {
+        SpawnTemporaryZone(
+            HazardType::SpearImpact,
+            position,
+            GameConfig::SpearImpactDuration);
     }
 }
 

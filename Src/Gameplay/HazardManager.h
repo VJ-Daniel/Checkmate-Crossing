@@ -6,6 +6,7 @@
 
 #include <glm.hpp>
 
+#include "GameConfig.h"
 #include "MovingHazard.h"
 #include "Obstacle.h"
 #include "ObstacleMeshFactory.h"
@@ -69,11 +70,13 @@ public:
         float duration,
         float arcHeight);
 
-    /// Stationary telegraph-then-strike zone: used for lightning.
+    /// Stationary telegraph-then-strike zone: used for lightning. Expires
+    /// after its strike, so repeated lightning comes from a repeating spawn.
     MovingHazard& SpawnWarningHazard(
         const glm::vec3& groundPosition,
         float warningDuration,
-        float strikeDuration);
+        float strikeDuration,
+        float catchRadius);
 
     /// Stationary, always-dangerous zone that expires after duration.
     /// Used for the fire patch a fireball leaves on impact -- Update()
@@ -84,33 +87,81 @@ public:
         const glm::vec3& groundPosition,
         float duration);
 
-    /// A cow that continuously chases the pawn. Uses the stationary-prop
-    /// Cow model (ObstacleType::Cow) rather than a Hazard model, since
-    /// that's where the existing mesh for it already lives -- see the
-    /// note in Obstacle.h about its enum placement.
+    /// A sheep that grazes until the pawn comes within detectionRange, then
+    /// follows while keeping followDistance from it (per the refinement
+    /// task). Uses the stationary-prop Cow model (ObstacleType::Cow) rather
+    /// than a Hazard model, since that's where the existing mesh for it
+    /// already lives -- see the note in Obstacle.h about its enum placement.
+    ///
+    /// detectionRange/followDistance default from GameConfig; pass explicit
+    /// values to make a particular sheep warier or clingier.
     MovingHazard& SpawnCow(
         const glm::vec3& startGroundPosition,
-        float maxSpeed);
+        float maxSpeed,
+        float detectionRange = GameConfig::SheepDetectionRange,
+        float followDistance = GameConfig::SheepFollowDistance);
 
-    /// Removes up to `count` of the active hazards nearest to position.
-    /// Used by the pawn's Bishop ability.
+    /// Removes up to `maxCount` of the stationary props nearest to origin,
+    /// ignoring any that lie further away than radius. Used by the pawn's
+    /// Bishop ability, and through it the Queen's.
     ///
-    /// NOTE(Ayub): the GDD's Bishop/Queen "breakable obstacles" are
-    /// specifically Fencing and Palisade -- stationary props that don't
-    /// have a placement system yet (Liyuu) or breakability rules yet
-    /// (Kaung). This operates on active moving hazards instead, since
-    /// that's what this class actually owns today. Redirect or extend
-    /// this once those other systems exist.
+    /// Only types IsAbilityClearable() accepts are eligible, so the cow is
+    /// skipped along with every moving hazard. Nothing this class owns is
+    /// touched: the ability is explicitly not allowed to delete projectiles
+    /// (see the rule in Obstacle.h).
     ///
-    /// Returns how many were actually removed (may be less than count).
-    int RemoveNearest(const glm::vec3& position, int count);
+    /// This used to remove the nearest MOVING hazards instead, which was
+    /// always a stand-in - the GDD's Bishop breaks "breakable obstacles",
+    /// and the original note here asked for exactly this redirect once the
+    /// props had a real placement system. They do now (Game owns them), so
+    /// the obstacles are passed in rather than being reached for: this
+    /// class still owns only movement.
+    ///
+    /// Cleared ground positions are appended to clearedPositions so the
+    /// caller can show the player what was destroyed without this function
+    /// knowing anything about rendering.
+    ///
+    /// Returns how many were actually removed (may be fewer than maxCount).
+    static int ClearStationaryObstacles(
+        std::vector<std::shared_ptr<StaticObstacle>>& obstacles,
+        const glm::vec3& origin,
+        float radius,
+        int maxCount,
+        std::vector<glm::vec3>& clearedPositions,
+        std::vector<std::shared_ptr<GroundEntity>>& removedVisuals);
+
+    /// The moving-hazard half of the same ability.
+    ///
+    /// Only hazards IsAbilityClearable(HazardType) accepts are eligible,
+    /// which today means the cow and nothing else - every projectile is
+    /// protected, in flight or not. Without this the cow would be immune
+    /// simply because it happens to be driven by a MovingHazard rather than
+    /// standing in the obstacle list.
+    ///
+    /// Same reporting contract as ClearStationaryObstacles: positions for
+    /// the effect, visuals for the caller to play a death reaction on.
+    int ClearRemovableHazards(
+        const glm::vec3& origin,
+        float radius,
+        int maxCount,
+        std::vector<glm::vec3>& clearedPositions,
+        std::vector<std::shared_ptr<GroundEntity>>& removedVisuals);
 
     /// Registers a hazard-spawning callback that fires once immediately
     /// and then repeats every interval seconds -- this is what actually
     /// keeps a lane's hazards coming instead of firing once at level
     /// start and never again. Typical use: a lambda that calls one of the
     /// Spawn* methods above with fixed parameters.
-    void RegisterRepeatingSpawn(float interval, std::function<void()> spawnFn);
+    ///
+    /// initialDelay holds the first spawn back by that many seconds instead
+    /// of firing on registration. Two lanes on the same interval otherwise
+    /// stay locked in step forever, and a field of them all fires together
+    /// on the frame the level is built; offsetting them is what keeps the
+    /// hazards reading as separate threats with gaps between.
+    void RegisterRepeatingSpawn(
+        float interval,
+        std::function<void()> spawnFn,
+        float initialDelay = 0.0f);
 
     /// Advances every active hazard, runs any due repeating spawns, and
     /// removes any hazards that have expired.

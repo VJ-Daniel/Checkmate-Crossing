@@ -7,6 +7,7 @@
 #include <memory> // <-- Add this
 
 #include "ChessPiece.h"
+#include "GameConfig.h"
 #include "GroundShadow.h"
 #include "WorldObject.h"
 #include "PieceMeshFactory.h" // <-- Add this
@@ -234,6 +235,13 @@ public:
     /// Only meaningful when IsAbilityActive() is true.
     PieceType GetActiveAbilityType() const;
 
+    /// 0 at the moment a timed ability (Knight/Rook/Queen) ends, 1 the
+    /// instant it starts, ticking down in between. 0 whenever
+    /// IsAbilityActive() is false, and 0 for Bishop -- its effect is
+    /// instant, so there is no duration to report. HUD code should treat
+    /// that as "no bar to draw", not as "just finished".
+    float GetAbilityDurationFraction() const;
+
     /// Multiplier currently applied to the pawn's base move speed: 1.0
     /// normally, boosted while Knight or Queen is active. John's animation
     /// blending can also read this to speed up a run cycle, for instance.
@@ -258,6 +266,13 @@ public:
     /// a reference to HazardManager to do that itself; whoever owns both
     /// (currently Game) should check this every frame and act on it.
     bool ConsumeBishopActivationPulse();
+
+    /// True exactly once, on the frame health reaches 0 and TakeDamage()
+    /// triggers a respawn, then clears itself. Counting deaths and acting
+    /// on a game over means touching checkpoint state and the level's
+    /// spawn point, neither of which this class holds a reference to --
+    /// whoever owns both (currently Game) should check this every frame.
+    bool ConsumeDeathPulse();
 
     /// Set the pawn's velocity directly (for knockback from collisions)
     void SetVelocity(const glm::vec3& newVelocity) { velocity = newVelocity; }
@@ -305,6 +320,16 @@ private:
 
     /// Counts down an active timed ability and clears it on expiry.
     void UpdateAbility(float deltaTime);
+
+    /// Swaps only the visible body and collision footprint. Ability state is
+    /// intentionally left alone so temporary ability forms can expire cleanly.
+    bool SetVisualCharacter(PieceType newCharacter, PieceMeshLibrary& meshLibrary);
+
+    /// Applies the model associated with a just-activated ability.
+    void ApplyAbilityVisual(PieceType abilityType);
+
+    /// Returns the player to the normal pawn model after a temporary form.
+    void RestorePawnVisual();
 
     /// Puts the shadow back under the pawn's current position.
     void UpdateShadow();
@@ -373,11 +398,15 @@ private:
 
     PieceType activeAbilityType = PieceType::Bishop;
 
-    float abilityTimeRemaining = 0.0f;
+    float abilityTimeRemaining = -1.0f;
+
+    float abilityVisualTimeRemaining = 0.0f;
 
     bool shieldAvailable = false;
 
     bool bishopPulsePending = false;
+
+    bool deathPulsePending = false;
 
     float slowMultiplier = 1.0f;
 
@@ -388,7 +417,10 @@ private:
     float knockbackTimer = 0.0f;
 
     // --- NEW HP VARIABLE ---
-    float health = 5.0f; // Pawn starts with 5 HP
+    // Read from config rather than written out again here. The HUD sizes its
+    // health pip row from the same constant, and the two silently disagreeing
+    // is exactly the drift that constant was added to prevent.
+    float health = GameConfig::MaxPawnHealth;
 
     glm::vec3 pawnBaseScale;
 };

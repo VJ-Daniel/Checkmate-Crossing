@@ -20,9 +20,23 @@ namespace
         {
             HazardType type = hazardVisual->GetType();
 
-            if (type == HazardType::Arrow || type == HazardType::Spear)
+            if (type == HazardType::Spear)
             {
-                // Arrow/spear are long and thin - use a smaller box
+                // Thrown on an arc now rather than swept along the lane, so
+                // its volume is centred on the shaft where it actually is
+                // rather than on the ground beneath it. Kept small: the
+                // spear is meant to be dodged in the air and answered for on
+                // the ground, and a generous airborne box would make the
+                // landing zone pointless.
+                const glm::vec3 center =
+                    visual.GetGroundPosition() +
+                    glm::vec3(0.0f, GameConfig::SpearHitRadius, 0.0f);
+
+                comp.SetCircle(center, GameConfig::SpearHitRadius);
+            }
+            else if (type == HazardType::Arrow)
+            {
+                // Long and thin - use a smaller box
                 glm::vec3 position = visual.GetGroundPosition();
                 float height = visual.GetHeight();
                 float width = visual.GetFootprintWidth();
@@ -46,6 +60,19 @@ namespace
 
                 glm::vec3 center = visual.GetGroundPosition() + glm::vec3(0.0f, visual.GetHeight() * 0.5f, 0.0f);
                 comp.SetCircle(center, radius);
+            }
+            else if (type == HazardType::Fireball)
+            {
+                // Meshless: it is drawn as a sprite, so UpdateFromEntity has
+                // no model to measure and would leave a zero-sized box the
+                // pawn could walk straight through. The radius comes from
+                // config instead, centred on the projectile's flight height
+                // rather than the ground beneath it.
+                const glm::vec3 center =
+                    visual.GetGroundPosition() +
+                    glm::vec3(0.0f, GameConfig::FireballHitRadius, 0.0f);
+
+                comp.SetCircle(center, GameConfig::FireballHitRadius);
             }
             else if (type == HazardType::RollingLog)
             {
@@ -161,7 +188,7 @@ void HazardCollision::Update(
     CheckStationaryHazards(stationaryHazards);
 
     // Check area hazards (fire patches, lightning strikes)
-    CheckAreaHazards(movingHazards);
+    CheckAreaHazards(movingHazards, deltaTime);
 }
 
 void HazardCollision::CheckMovingHazards(
@@ -174,6 +201,20 @@ void HazardCollision::CheckMovingHazards(
     {
         if (!hazard || hazard->HasExpired() || !hazard->IsActive())
             continue;
+
+        // Standing zones - the fireball's floor fire and lightning's strike
+        // area - belong to CheckAreaHazards, which tests them by radius.
+        // Letting them fall through here as well would run two damage paths
+        // over one hazard: the second is swallowed by the damage cooldown
+        // today, so it costs nothing visible, but it is the kind of thing
+        // that starts double-hitting the moment the cooldown is retuned.
+        const HazardMovementPattern pattern = hazard->GetMovementPattern();
+
+        if (pattern == HazardMovementPattern::TemporaryZone ||
+            pattern == HazardMovementPattern::WarningThenStrike)
+        {
+            continue;
+        }
 
         const GroundEntity& visual = hazard->GetVisual();
 
@@ -226,28 +267,42 @@ void HazardCollision::CheckMovingHazards(
                 continue;
             }
 
-            // Apply damage and effects
-            ApplyDamage(damage, knockbackDir, knockback);
-
-            // Special effects for specific hazard types
+            // Per-type damage and knockback, decided before the single
+            // ApplyDamage call below.
+            //
+            // These used to be a second ApplyDamage stacked on top of a
+            // generic first one. Only the first ever landed - the second
+            // arrived inside its own cooldown and was dropped - so the
+            // per-type numbers were being written but never applied.
             if (type == HazardType::Fireball)
             {
-                ApplyDamage(1.0f, knockbackDir, 2.0f);
+                damage = GameConfig::FireballDamage;
+                knockback = GameConfig::FireballKnockback;
+            }
+            else if (type == HazardType::Spear)
+            {
+                damage = GameConfig::SpearDamage;
+                knockback = GameConfig::SpearKnockback;
             }
             else if (type == HazardType::Cannonball)
             {
-                ApplyDamage(0.5f, knockbackDir, 2.5f);
+                damage = 0.5f;
+                knockback = 2.5f;
             }
             else if (type == HazardType::RollingRock)
             {
                 // Rolling Rock: "large hit area, easier to see, harder to move around"
-                ApplyDamage(1.0f, knockbackDir, 2.0f); // High damage, strong push
+                damage = 1.0f;
+                knockback = 2.0f; // High damage, strong push
             }
             else if (type == HazardType::RollingLog)
             {
                 // Rolling Log: Similar damage, slightly lighter
-                ApplyDamage(0.5f, knockbackDir, 2.5f);
+                damage = 0.5f;
+                knockback = 2.5f;
             }
+
+            ApplyDamage(damage, knockbackDir, knockback);
         }
     }
 }
@@ -360,71 +415,163 @@ void HazardCollision::CheckStationaryHazards(
     }
 }
 
+bool HazardCollision::UpdateFloorFireContact(
+    const MovingHazard& hazard,
+    const glm::vec3& pawnPosition,
+    float deltaTime)
+{
+    // Measured on the ground plane: the patch burns whoever is standing in
+    // it, and a jump does not clear it.
+    const glm::vec3 offset =
+        pawnPosition - hazard.GetVisual().GetGroundPosition();
+
+    const float distance = glm::length(
+        glm::vec3(offset.x, 0.0f, offset.z));
+
+    if (distance >= GameConfig::FloorFireRadius || !hazard.IsActive())
+        return false;
+
+    auto entry = fireContactTimers.find(&hazard);
+
+    // Not in the map means this is the frame the pawn stepped in, so the
+    // first tick is immediate rather than a second late.
+    const bool firstContact = entry == fireContactTimers.end();
+
+    if (firstContact)
+    {
+        entry = fireContactTimers.emplace(&hazard, 0.0f).first;
+    }
+    else
+    {
+        entry->second += deltaTime;
+    }
+
+    if (!firstContact && entry->second < GameConfig::FloorFireDamageInterval)
+        return true;
+
+    entry->second = 0.0f;
+
+    if (pawn->HasShield())
+    {
+        pawn->ConsumeShield();
+    }
+    else if (!pawn->IsImmuneToHazards())
+    {
+        // No knockback: being pushed out of a fire the player walked into
+        // would undo the hazard. The tick rate is this timer's job, not the
+        // shared hit cooldown's -- that cooldown is shorter than a second,
+        // so leaving the pacing to it burned far faster than once a second.
+        ApplyDamage(
+            GameConfig::FloorFireDamage,
+            glm::vec3(0.0f),
+            0.0f);
+    }
+
+    return true;
+}
+
 void HazardCollision::CheckAreaHazards(
-    const std::vector<std::unique_ptr<MovingHazard>>& hazards)
+    const std::vector<std::unique_ptr<MovingHazard>>& hazards,
+    float deltaTime)
 {
     if (!pawn)
         return;
 
-    glm::vec3 pawnPos = pawn->GetTransform().GetPosition();
+    const glm::vec3 pawnPos = pawn->GetTransform().GetPosition();
+
+    // Which fires the pawn is standing in this frame. Anything with a timer
+    // that is not in here has been left, and its timer is dropped below so
+    // walking back in starts the burn from the beginning.
+    std::vector<const MovingHazard*> touchedFires;
 
     for (const auto& hazard : hazards)
     {
         if (!hazard || hazard->HasExpired())
             continue;
 
-        // Check for fire patches
-        if (hazard->GetMovementPattern() == HazardMovementPattern::TemporaryZone)
+        const GroundEntity& visual = hazard->GetVisual();
+        const Hazard* hazardVisual = dynamic_cast<const Hazard*>(&visual);
+
+        if (!hazardVisual)
+            continue;
+
+        // Floor fire: burns once on contact, then once a second while stood
+        // in. Its own type now, so this no longer has to ask which movement
+        // pattern a Fireball happens to be using.
+        if (hazardVisual->GetType() == HazardType::FloorFire)
         {
-            const GroundEntity& visual = hazard->GetVisual();
-            const Hazard* hazardVisual = dynamic_cast<const Hazard*>(&visual);
+            if (UpdateFloorFireContact(*hazard, pawnPos, deltaTime))
+                touchedFires.push_back(hazard.get());
 
-            if (hazardVisual && hazardVisual->GetType() == HazardType::Fireball)
-            {
-                if (hazard->IsActive())
-                {
-                    float distance = glm::length(pawnPos - visual.GetGroundPosition());
-                    float burnRadius = 0.6f;
-
-                    if (distance < burnRadius)
-                    {
-                        if (pawn->HasShield())
-                        {
-                            pawn->ConsumeShield();
-                        }
-                        else if (!pawn->IsImmuneToHazards())
-                        {
-                            ApplyDamage(0.2f, glm::vec3(0.0f), 0.0f);
-                        }
-                    }
-                }
-            }
+            continue;
         }
 
-        // Check for lightning strikes
-        if (hazard->GetMovementPattern() == HazardMovementPattern::WarningThenStrike)
+        // Broken ground where a spear struck. One hit while it lasts, paced
+        // by the shared cooldown rather than the fire's own timer: this is a
+        // spot to be driven off, not an area to be ground down in.
+        if (hazardVisual->GetType() == HazardType::SpearImpact)
         {
-            const GroundEntity& visual = hazard->GetVisual();
-            const Hazard* hazardVisual = dynamic_cast<const Hazard*>(&visual);
+            if (!hazard->IsActive())
+                continue;
 
-            if (hazardVisual && hazardVisual->GetType() == HazardType::Lightning && hazard->IsActive())
+            const glm::vec3 offset = pawnPos - visual.GetGroundPosition();
+
+            const float distance = glm::length(
+                glm::vec3(offset.x, 0.0f, offset.z));
+
+            if (distance < GameConfig::SpearImpactRadius)
             {
-                float distance = glm::length(pawnPos - visual.GetGroundPosition());
-                float strikeRadius = 0.5f;
-
-                if (distance < strikeRadius)
+                if (pawn->HasShield())
                 {
-                    if (pawn->HasShield())
-                    {
-                        pawn->ConsumeShield();
-                    }
-                    else if (!pawn->IsImmuneToHazards())
-                    {
-                        ApplyDamage(1.0f, glm::vec3(0.0f, 1.0f, 0.0f), 0.5f);
-                    }
+                    pawn->ConsumeShield();
+                }
+                else if (!pawn->IsImmuneToHazards())
+                {
+                    ApplyDamage(
+                        GameConfig::SpearImpactDamage,
+                        glm::vec3(0.0f),
+                        0.0f);
                 }
             }
+
+            continue;
         }
+
+        // Lightning: the warning phase is harmless, and whether the strike
+        // caught the pawn was settled by MovingHazard at the instant the
+        // countdown ended. Consuming the hit here applies it exactly once,
+        // however many frames the bolt stays on screen.
+        //
+        // Every zone is an independent hazard in this list, so any number of
+        // them can be warning and striking at once.
+        if (hazardVisual->GetType() == HazardType::Lightning)
+        {
+            if (!hazard->ConsumeStrikeHit())
+                continue;
+
+            if (pawn->HasShield())
+            {
+                pawn->ConsumeShield();
+            }
+            else if (!pawn->IsImmuneToHazards())
+            {
+                ApplyDamage(
+                    GameConfig::LightningDamage,
+                    glm::vec3(0.0f, 1.0f, 0.0f),
+                    GameConfig::LightningKnockback);
+            }
+        }
+    }
+
+    // Retire the timers of every fire the pawn is no longer in, including
+    // any that expired out from under them.
+    for (auto it = fireContactTimers.begin(); it != fireContactTimers.end(); )
+    {
+        const bool stillTouching =
+            std::find(touchedFires.begin(), touchedFires.end(), it->first) !=
+            touchedFires.end();
+
+        it = stillTouching ? std::next(it) : fireContactTimers.erase(it);
     }
 }
 
@@ -434,17 +581,35 @@ bool HazardCollision::ApplyDamage(
     float knockback,
     bool isCow)
 {
+    // --- CRITICAL FIX: If it's the Cow, do NOT set the cooldown! ---
+    // This prevents the Cow from making you immune to other hazards.
+    if (isCow)
+    {
+        // Only apply the knockback, and exit immediately!
+        if (knockback > 0.0f && onKnockback)
+        {
+            glm::vec3 knockbackDir = direction;
+            if (glm::length(knockbackDir) < 0.01f)
+                knockbackDir = glm::vec3(0.0f, 0.0f, 1.0f);
+            knockbackDir = glm::normalize(knockbackDir);
+
+            glm::vec3 bounceDir = glm::normalize(glm::vec3(knockbackDir.x, 0.8f, knockbackDir.z));
+            onKnockback(bounceDir * knockback, true);
+        }
+        return true; // Exit now, do NOT set damageCooldownRemaining!
+    }
+    // -------------------------------------------------------------
+
+    // Normal damage logic (Spikes, Arrows, etc.)
     if (damageCooldownRemaining > 0.0f)
         return false;
 
     if (damage <= 0.0f && knockback <= 0.0f)
         return false;
 
-    // Apply damage
     if (damage > 0.0f && onDamageTaken)
         onDamageTaken(damage, direction);
 
-    // Apply knockback
     if (knockback > 0.0f && onKnockback)
     {
         glm::vec3 knockbackDir = direction;
@@ -452,11 +617,8 @@ bool HazardCollision::ApplyDamage(
             knockbackDir = glm::vec3(0.0f, 0.0f, 1.0f);
         knockbackDir = glm::normalize(knockbackDir);
 
-        // --- THE FIX: Add an upward bounce so the pawn leaves the ground! ---
         glm::vec3 bounceDir = glm::normalize(glm::vec3(knockbackDir.x, 0.8f, knockbackDir.z));
-        // --------------------------------------------------------------------
-
-        onKnockback(bounceDir * knockback, isCow);
+        onKnockback(bounceDir * knockback, false);
     }
 
     damageCooldownRemaining = damageCooldown;
