@@ -510,6 +510,20 @@ namespace GameConfig
     constexpr float SheepDetectionRange = 5.0f;
 
     /// The gap a following sheep tries to keep from the pawn.
-    constexpr float SheepFollowDistance = 1.5f;
+    ///
+    /// Zero: it closes all the way and stays in contact, shoving until the
+    /// player works free. It used to hold 1.5 units, which meant it stopped
+    /// short, touched once and then politely waited - the hazard barged you
+    /// once and gave up.
+    constexpr float SheepFollowDistance = 0.0f;
+
+    /// How hard a sheep in contact shoves, per frame of contact.
+    ///
+    /// This is a sustained push rather than the one-off impulse other
+    /// hazards deal, so it is much smaller than KnockbackDistance: it is
+    /// added on top of the player's own movement every frame they stay in
+    /// contact, and is meant to lose them ground while they walk out of it,
+    /// not to fling them.
+    constexpr float SheepPushStrength = 2.6f;
 }
 

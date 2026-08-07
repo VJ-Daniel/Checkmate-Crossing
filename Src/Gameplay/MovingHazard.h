@@ -174,6 +174,15 @@ public:
     /// (Kaung) can tell an alert, moving sheep from an idle grazing one.
     bool IsFollowing() const;
 
+    /// Furthest along the level a follower may chase, as a world Z.
+    ///
+    /// Rows run toward -Z, so this is a floor on Z rather than a ceiling. It
+    /// exists because a follower otherwise has no idea which section it
+    /// belongs to: it will happily tail the player out of its own woodland
+    /// and into the finale, which is meant to hold nothing but fireballs and
+    /// lightning. Defaults to no limit.
+    void SetFollowLimitZ(float minimumZ);
+
     /// Connects the visual-only rolling component to this mover. Translation
     /// remains owned here; RollingMotion derives spin from the actual distance
     /// travelled so speed changes and reversals stay visually correct.
@@ -407,4 +416,8 @@ private:
     /// Latched true the first time the target enters detection range, and
     /// back to false whenever the target is outside it again.
     bool following = false;
+
+    /// Furthest along the level this follower may chase. Effectively no
+    /// limit until a caller sets one.
+    float followMinZ = -1.0e9f;
 };

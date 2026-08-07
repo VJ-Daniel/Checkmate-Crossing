@@ -240,7 +240,29 @@ void HazardCollision::CheckMovingHazards(
             // pawn's brief post-hit protection behaves as intended.
             if (isCow)
             {
-                ApplyDamage(0.0f, knockbackDir, knockback, true);
+                // Push straight out from the cow, not along its heading.
+                //
+                // Its heading is no use here now that it closes all the way
+                // in: pressed against the player it is barely moving, so the
+                // old velocity-derived direction collapsed to a fixed
+                // fallback and shoved the player the same way regardless of
+                // which side they were caught on. Cow-to-pawn always shoves
+                // them off it.
+                glm::vec3 away =
+                    pawn->GetTransform().GetPosition() -
+                    visual.GetGroundPosition();
+
+                away.y = 0.0f;
+
+                if (glm::length(away) > 0.001f)
+                    knockbackDir = glm::normalize(away);
+
+                ApplyDamage(
+                    0.0f,
+                    knockbackDir,
+                    GameConfig::SheepPushStrength,
+                    true);
+
                 continue;
             }
 
@@ -541,10 +563,17 @@ bool HazardCollision::ApplyDamage(
             glm::vec3 knockbackDir = direction;
             if (glm::length(knockbackDir) < 0.01f)
                 knockbackDir = glm::vec3(0.0f, 0.0f, 1.0f);
+
+            // Flat along the ground, with none of the upward bounce the
+            // one-off hits get. This shove is re-applied every frame of
+            // contact, so any vertical component would hold the pawn off the
+            // floor for as long as the cow leans on it - and a pawn with
+            // upward velocity reads as mid-jump to the stationary-obstacle
+            // checks, which would let it clear fences by being shoved.
+            knockbackDir.y = 0.0f;
             knockbackDir = glm::normalize(knockbackDir);
 
-            glm::vec3 bounceDir = glm::normalize(glm::vec3(knockbackDir.x, 0.8f, knockbackDir.z));
-            onKnockback(bounceDir * knockback, true);
+            onKnockback(knockbackDir * knockback, true);
         }
         return true; // Exit now, do NOT set damageCooldownRemaining!
     }

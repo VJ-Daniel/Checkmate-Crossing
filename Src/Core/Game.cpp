@@ -52,6 +52,42 @@ namespace
         return rows;
     }
 
+    /// Every run of consecutive lanes of one type, in level order.
+    ///
+    /// FindConsecutiveRowsOfType above stops at the first run, which was
+    /// enough while each hazard type appeared exactly once. The level now
+    /// revisits types in later sections, and anything still resolving a
+    /// single first row would quietly leave those later sections empty -
+    /// a whole arrow field with no arrows in it, and no error to say so.
+    std::vector<std::vector<const Lane*>> FindRunsOfType(
+        const Level& level,
+        LaneType type)
+    {
+        std::vector<std::vector<const Lane*>> runs;
+
+        std::vector<const Lane*> current;
+
+        for (int row = 0; const Lane* lane = level.GetLane(row); ++row)
+        {
+            if (lane->GetType() == type)
+            {
+                current.push_back(lane);
+                continue;
+            }
+
+            if (!current.empty())
+            {
+                runs.push_back(current);
+                current.clear();
+            }
+        }
+
+        if (!current.empty())
+            runs.push_back(current);
+
+        return runs;
+    }
+
     /// Which way a piece is turned when it is only being displayed.
     ///
     /// Presentation, not orientation: every model faces +Z, and this decides
@@ -290,6 +326,7 @@ bool Game::Initialize(
 
     std::cout << "Game initialized with " << stationaryHazards.size() << " stationary hazards." << std::endl;
 
+
     return true;
 }
 
@@ -455,8 +492,24 @@ void Game::BuildLevelObstacles()
 
     const float halfWidth = Level::GetPlayableHalfWidth();
 
-    auto place = [this](ObstacleType type, float x, const Lane& lane)
+    // Nothing may be placed at or past the final checkpoint. The run up to
+    // the cage is meant to be empty, and enforcing that here rather than by
+    // being careful section-by-section means a later layout change cannot
+    // accidentally drop a wall across it.
+    const std::vector<int> checkpointRows =
+        level->FindRowsOfType(LaneType::Checkpoint);
+
+    const int finalCheckpointRow =
+        checkpointRows.empty() ? -1 : checkpointRows.back();
+
+    auto place = [this, finalCheckpointRow](
+        ObstacleType type,
+        float x,
+        const Lane& lane)
         {
+            if (finalCheckpointRow >= 0 && lane.GetRow() >= finalCheckpointRow)
+                return;
+
             auto obstacle = obstacleMeshes->CreateObstacle(type);
 
             obstacle->SetGroundPosition(
@@ -465,103 +518,223 @@ void Game::BuildLevelObstacles()
             stationaryHazards.push_back(obstacle);
         };
 
-    // ---------------------------------------------------------
-    // TESTING ARENA: Extra breakable obstacles for Bishop/Queen testing
-    // ---------------------------------------------------------
-    {
-        // Place them 2-5 lanes ahead of the pawn, clustered together
-        int rowOffset = 2;
-        if (const Lane* lane = level->GetLane(level->GetSpawnRow() + rowOffset))
+    // Fills a row edge to edge with one prop type, leaving a single opening.
+    //
+    // This is what turns the props from scenery into structure: a lone fence
+    // in an empty row is walked around without a thought, while a barrier
+    // spanning the row forces the player to find the gap. Staggering those
+    // gaps between consecutive rows is what makes a section a route rather
+    // than a series of straight lines.
+    auto placeBarrier = [&place, halfWidth](
+        const Lane& lane,
+        ObstacleType type,
+        float gapCenterX,
+        float gapHalfWidth,
+        float spacing)
         {
-            const float y = lane->GetSurfaceHeight();
-            const float z = lane->GetCenterZ();
+            for (float x = -halfWidth + spacing * 0.5f;
+                x <= halfWidth - spacing * 0.5f;
+                x += spacing)
+            {
+                if (std::fabs(x - gapCenterX) < gapHalfWidth)
+                    continue;
 
-            // Helper to manually spawn one breakable
-            auto AddBreakable = [&](ObstacleType type, float xOffset, int rowOff) {
-                int row = level->GetSpawnRow() + rowOff;
-                if (const Lane* rowLane = level->GetLane(row))
+                place(type, x, lane);
+            }
+        };
+
+    // Same idea, but alternating two prop types across the span so a barrier
+    // reads as something assembled out of whatever was to hand.
+    auto placeMixedBarrier = [&place, halfWidth](
+        const Lane& lane,
+        ObstacleType first,
+        ObstacleType second,
+        float gapCenterX,
+        float gapHalfWidth,
+        float spacing)
+        {
+            int index = 0;
+
+            for (float x = -halfWidth + spacing * 0.5f;
+                x <= halfWidth - spacing * 0.5f;
+                x += spacing, ++index)
+            {
+                if (std::fabs(x - gapCenterX) < gapHalfWidth)
+                    continue;
+
+                place((index % 2 == 0) ? first : second, x, lane);
+            }
+        };
+
+    // Wide enough for the pawn (0.4 across) to walk through without
+    // scraping, tight enough that it has to be aimed for.
+    constexpr float GapHalfWidth = 0.95f;
+
+    //-----------------------------------------------------------
+    // Spike and mud fields.
+    //-----------------------------------------------------------
+    {
+        const auto runs = FindRunsOfType(*level, LaneType::SpikeMud);
+
+        // First field: spikes and mud alternate left/right down the section,
+        // per the GDD's own "[S] [M]     [S]     [M] [S]" map, so no two
+        // consecutive rows block the same corridor.
+        if (runs.size() >= 1)
+        {
+            const auto& rows = runs[0];
+
+            if (rows.size() >= 1)
+            {
+                place(ObstacleType::Spikes, -halfWidth * 0.55f, *rows[0]);
+                place(ObstacleType::Mud, halfWidth * 0.24f, *rows[0]);
+                place(ObstacleType::Bush, halfWidth * 0.78f, *rows[0]);
+            }
+
+            if (rows.size() >= 2)
+            {
+                place(ObstacleType::Mud, -halfWidth * 0.24f, *rows[1]);
+                place(ObstacleType::Spikes, halfWidth * 0.55f, *rows[1]);
+                place(ObstacleType::Rock, -halfWidth * 0.80f, *rows[1]);
+            }
+
+            if (rows.size() >= 3)
+            {
+                place(ObstacleType::Spikes, -halfWidth * 0.70f, *rows[2]);
+                place(ObstacleType::Mud, -halfWidth * 0.35f, *rows[2]);
+                place(ObstacleType::Spikes, halfWidth * 0.30f, *rows[2]);
+                // A gap remains on the far right.
+            }
+        }
+
+        // Second field, in the harder section: spikes crowd both flanks and
+        // the only clean line is a mud crossing, so the shortcut costs speed.
+        if (runs.size() >= 2)
+        {
+            const auto& rows = runs[1];
+
+            if (rows.size() >= 1)
+            {
+                place(ObstacleType::Spikes, -halfWidth * 0.75f, *rows[0]);
+                place(ObstacleType::Spikes, -halfWidth * 0.30f, *rows[0]);
+                place(ObstacleType::Mud, halfWidth * 0.25f, *rows[0]);
+                place(ObstacleType::Spikes, halfWidth * 0.72f, *rows[0]);
+            }
+
+            if (rows.size() >= 2)
+            {
+                place(ObstacleType::Mud, -halfWidth * 0.60f, *rows[1]);
+                place(ObstacleType::Spikes, 0.0f, *rows[1]);
+                place(ObstacleType::Mud, halfWidth * 0.60f, *rows[1]);
+            }
+        }
+    }
+
+    //-----------------------------------------------------------
+    // Fenced woodland. Both runs are barriers with staggered openings.
+    //-----------------------------------------------------------
+    {
+        const auto runs = FindRunsOfType(*level, LaneType::FenceTree);
+
+        // First woodland: the cow's ground. Openings swing right, left,
+        // right, so crossing it means committing to a weave with a cow in
+        // the middle of it.
+        if (runs.size() >= 1)
+        {
+            const auto& rows = runs[0];
+
+            if (rows.size() >= 1)
+            {
+                placeBarrier(
+                    *rows[0], ObstacleType::Fence,
+                    halfWidth * 0.58f, GapHalfWidth, 1.05f);
+            }
+
+            if (rows.size() >= 2)
+            {
+                // Trees and rocks together: neither can be broken, so this
+                // row is purely about finding the line through it.
+                placeMixedBarrier(
+                    *rows[1], ObstacleType::Tree, ObstacleType::Rock,
+                    -halfWidth * 0.42f, GapHalfWidth, 1.15f);
+            }
+
+            if (rows.size() >= 3)
+            {
+                // Walls neither break nor jump (GDD), so this is the row
+                // that genuinely cannot be forced - the gap is the only way.
+                placeBarrier(
+                    *rows[2], ObstacleType::Wall,
+                    halfWidth * 0.15f, GapHalfWidth, 1.10f);
+            }
+
+            if (rows.size() >= 4)
+            {
+                placeMixedBarrier(
+                    *rows[3], ObstacleType::Palisade, ObstacleType::Bush,
+                    -halfWidth * 0.66f, GapHalfWidth, 1.05f);
+            }
+        }
+
+        // Second woodland: same idea, tighter, and mostly breakable - this
+        // is the stretch where a banked Bishop actually buys a shortcut.
+        if (runs.size() >= 2)
+        {
+            const auto& rows = runs[1];
+
+            if (rows.size() >= 1)
+            {
+                placeBarrier(
+                    *rows[0], ObstacleType::Palisade,
+                    halfWidth * 0.70f, GapHalfWidth, 1.00f);
+            }
+
+            if (rows.size() >= 2)
+            {
+                placeMixedBarrier(
+                    *rows[1], ObstacleType::Fence, ObstacleType::Tree,
+                    -halfWidth * 0.22f, GapHalfWidth, 1.10f);
+            }
+
+            if (rows.size() >= 3)
+            {
+                placeMixedBarrier(
+                    *rows[2], ObstacleType::Wall, ObstacleType::Fence,
+                    halfWidth * 0.40f, GapHalfWidth, 1.10f);
+            }
+        }
+    }
+
+    //-----------------------------------------------------------
+    // Scenery on the connecting grass, so the walk between hazard rows is
+    // not a bare corridor. Placed well off the centre line and never in a
+    // formation, so none of it blocks a route.
+    //-----------------------------------------------------------
+    {
+        const auto runs = FindRunsOfType(*level, LaneType::SafeGrass);
+
+        int runIndex = 0;
+
+        for (const auto& rows : runs)
+        {
+            // The opening stretch stays clear: the player is still learning
+            // to move, and the first arrow row should be what draws the eye.
+            if (runIndex >= 2)
+            {
+                for (std::size_t i = 0; i < rows.size(); ++i)
                 {
-                    const float rowY = rowLane->GetSurfaceHeight();
-                    const float rowZ = rowLane->GetCenterZ();
-                    auto obstacle = obstacleMeshes->CreateObstacle(type);
-                    obstacle->SetGroundPosition(glm::vec3(xOffset, rowY, rowZ));
-                    obstacle->Initialize();
-                    stationaryHazards.push_back(obstacle);
+                    const bool leaning = ((runIndex + i) % 2) == 0;
+                    const float side = leaning ? -1.0f : 1.0f;
+
+                    place(
+                        (runIndex % 3 == 0)
+                        ? ObstacleType::Bush
+                        : ObstacleType::Rock,
+                        side * halfWidth * 0.86f,
+                        *rows[i]);
                 }
-                };
+            }
 
-            // A single Fence to test 1 removal
-            AddBreakable(ObstacleType::Fence, 0.0f, 2);
-
-            // Two side-by-side Palisades to test 2 removals
-            AddBreakable(ObstacleType::Palisade, -1.0f, 3);
-            AddBreakable(ObstacleType::Palisade, 1.0f, 3);
-
-            // Three Fences in a row to test removal limits
-            AddBreakable(ObstacleType::Fence, -1.5f, 4);
-            AddBreakable(ObstacleType::Fence, 0.0f, 4);
-            AddBreakable(ObstacleType::Fence, 1.5f, 4);
-
-            // One Palisade far away to test range limits
-            AddBreakable(ObstacleType::Palisade, 0.0f, 8);
-        }
-    }
-
-    // SpikeMud section (3 rows): Spikes and Mud alternate left/right down
-    // the section, per the GDD's own "[S] [M]     [S]     [M] [S]" map, so
-    // no two consecutive rows block the same corridor.
-    {
-        auto rows = FindConsecutiveRowsOfType(*level, LaneType::SpikeMud);
-
-        if (rows.size() >= 1 && rows[0])
-        {
-            place(ObstacleType::Spikes, -halfWidth * 0.55f, *rows[0]);
-            place(ObstacleType::Mud, halfWidth * 0.24f, *rows[0]);
-        }
-
-        if (rows.size() >= 2 && rows[1])
-        {
-            place(ObstacleType::Mud, -halfWidth * 0.24f, *rows[1]);
-            place(ObstacleType::Spikes, halfWidth * 0.55f, *rows[1]);
-        }
-
-        if (rows.size() >= 3 && rows[2])
-        {
-            place(ObstacleType::Spikes, -halfWidth * 0.70f, *rows[2]);
-            place(ObstacleType::Mud, -halfWidth * 0.35f, *rows[2]);
-            // Right half of this row stays clear.
-        }
-    }
-
-    // FenceTree section (3 rows): the GDD's top-down map names exactly
-    // Tree/Fence/Rock/Wall for this section; Palisade and Bush fill the
-    // third row since the obstacle set has more props than the map's
-    // single simplified row shows.
-    {
-        auto rows = FindConsecutiveRowsOfType(*level, LaneType::FenceTree);
-
-        if (rows.size() >= 1 && rows[0])
-        {
-            place(ObstacleType::Tree, -halfWidth * 0.55f, *rows[0]);
-            place(ObstacleType::Fence, halfWidth * 0.45f, *rows[0]);
-        }
-
-        if (rows.size() >= 2 && rows[1])
-        {
-            place(ObstacleType::Rock, -halfWidth * 0.40f, *rows[1]);
-
-            // Wall fully blocks and can neither be jumped nor broken (GDD),
-            // so it sits near the edge and leaves the wide side as the
-            // real route.
-            place(ObstacleType::Wall, halfWidth * 0.73f, *rows[1]);
-        }
-
-        if (rows.size() >= 3 && rows[2])
-        {
-            place(ObstacleType::Palisade, -halfWidth * 0.44f, *rows[2]);
-            place(ObstacleType::Bush, halfWidth * 0.22f, *rows[2]);
-            // Right side of this row (roughly x = 1.5..4.5) stays clear --
-            // BuildLevelCollectibles puts the Queen there.
+            ++runIndex;
         }
     }
 }
@@ -577,9 +750,11 @@ void Game::BuildLevelHazards()
     // introduces the curved Spear -- there is no dedicated Spear lane
     // type, so it shares the section with Arrow rather than sitting in an
     // unrelated SafeGrass row.
+    //
+    // Both arrow fields are populated: the second one is a later run of the
+    // same lane type, and resolving only the first would leave it bare.
+    for (const auto& rows : FindRunsOfType(*level, LaneType::Arrow))
     {
-        auto rows = FindConsecutiveRowsOfType(*level, LaneType::Arrow);
-
         if (rows.size() >= 1 && rows[0])
         {
             const float y = rows[0]->GetSurfaceHeight();
@@ -592,6 +767,21 @@ void Game::BuildLevelHazards()
                 glm::vec3(-halfWidth - 0.5f, y, z),
                 glm::vec3(halfWidth + 0.5f, y, z),
                 3.0f,
+                true);
+        }
+
+        // A third row, where the field has one, gets a second arrow running
+        // the other way so the section cannot be crossed on one rhythm.
+        if (rows.size() >= 3 && rows[2])
+        {
+            const float y = rows[2]->GetSurfaceHeight();
+            const float z = rows[2]->GetCenterZ();
+
+            hazardManager->SpawnLinearHazard(
+                HazardType::Arrow,
+                glm::vec3(halfWidth + 0.5f, y, z),
+                glm::vec3(-halfWidth - 0.5f, y, z),
+                3.4f,
                 true);
         }
 
@@ -632,6 +822,29 @@ void Game::BuildLevelHazards()
     {
         auto rows = FindConsecutiveRowsOfType(*level, LaneType::Cannonball);
 
+        // A log rolls the length of this section, along Z rather than across
+        // it. It used to run through the fireball/lightning finale, which is
+        // now reserved for those two hazards alone.
+        if (!rows.empty() && rows.front() && rows.back())
+        {
+            const float y = rows.front()->GetSurfaceHeight();
+            const float startZ = rows.front()->GetCenterZ();
+            const float endZ = rows.back()->GetCenterZ();
+            const float x = halfWidth * 0.44f;
+
+            hazardManager->RegisterRepeatingSpawn(
+                3.0f,
+                [this, y, x, startZ, endZ]()
+                {
+                    hazardManager->SpawnLinearHazard(
+                        HazardType::RollingLog,
+                        glm::vec3(x, y, startZ),
+                        glm::vec3(x, y, endZ),
+                        2.2f,
+                        false);
+                });
+        }
+
         if (rows.size() >= 2 && rows[1])
         {
             const float y = rows[1]->GetSurfaceHeight();
@@ -661,17 +874,43 @@ void Game::BuildLevelHazards()
     //
     // Playtest feedback: at the original 2.5 it closed the gap too fast to
     // react to. Halved to 1.25.
+    //
+    // One per woodland, and each is leashed to the checkpoint that closes
+    // its section. A cow will otherwise tail the player straight out of its
+    // own ground and into whatever comes next, which for the last of them
+    // would be the fireball-and-lightning finale.
     {
-        auto rows = FindConsecutiveRowsOfType(*level, LaneType::FenceTree);
+        const std::vector<int> checkpointRows =
+            level->FindRowsOfType(LaneType::Checkpoint);
 
-        if (!rows.empty() && rows.front())
+        const auto runs = FindRunsOfType(*level, LaneType::FenceTree);
+
+        for (const auto& rows : runs)
         {
-            hazardManager->SpawnCow(
+            if (rows.empty() || !rows.front())
+                continue;
+
+            MovingHazard& cow = hazardManager->SpawnCow(
                 glm::vec3(
                     0.0f,
                     rows.front()->GetSurfaceHeight(),
                     rows.front()->GetCenterZ()),
                 1.25f);
+
+            // The first checkpoint past this woodland is the leash. Rows run
+            // toward -Z, so the limit is that lane's Z.
+            const int lastRow = rows.back()->GetRow();
+
+            for (int checkpointRow : checkpointRows)
+            {
+                if (checkpointRow <= lastRow)
+                    continue;
+
+                if (const Lane* stop = level->GetLane(checkpointRow))
+                    cow.SetFollowLimitZ(stop->GetCenterZ());
+
+                break;
+            }
         }
     }
 
@@ -688,28 +927,29 @@ void Game::BuildLevelHazards()
     {
         auto rows = FindConsecutiveRowsOfType(*level, LaneType::FireballLightning);
 
-        // Outer rows get the fireballs, entering from opposite edges so the
-        // section is threatened from both sides rather than one.
-        if (rows.size() >= 1 && rows[0])
+        // Even rows get the fireballs, entering from alternating edges so the
+        // section is threatened from both sides rather than one, and odd rows
+        // get the lightning. Driven off the row count rather than hardcoded
+        // indices, so lengthening the finale fills it instead of leaving the
+        // extra rows empty.
+        for (std::size_t i = 0; i < rows.size(); i += 2)
         {
+            if (!rows[i])
+                continue;
+
             RegisterFireballVolley(
-                rows[0]->GetSurfaceHeight(),
-                rows[0]->GetCenterZ(),
-                true);
+                rows[i]->GetSurfaceHeight(),
+                rows[i]->GetCenterZ(),
+                (i % 4) == 0);
         }
 
-        if (rows.size() >= 3 && rows[2])
+        for (std::size_t i = 1; i < rows.size(); i += 2)
         {
-            RegisterFireballVolley(
-                rows[2]->GetSurfaceHeight(),
-                rows[2]->GetCenterZ(),
-                false);
-        }
+            if (!rows[i])
+                continue;
 
-        if (rows.size() >= 2 && rows[1])
-        {
-            const float y = rows[1]->GetSurfaceHeight();
-            const float z = rows[1]->GetCenterZ();
+            const float y = rows[i]->GetSurfaceHeight();
+            const float z = rows[i]->GetCenterZ();
 
             // "An unavoidable strike if the player stays in a marked
             // danger area for too long." The warning phase is the reaction
@@ -742,41 +982,28 @@ void Game::BuildLevelHazards()
             }
         }
 
-        if (!rows.empty() && rows.front() && rows.back())
-        {
-            const float y = rows.front()->GetSurfaceHeight();
-            const float startZ = rows.front()->GetCenterZ();
-            const float endZ = rows.back()->GetCenterZ();
-            const float x = halfWidth * 0.44f;
-
-            hazardManager->RegisterRepeatingSpawn(
-                3.0f,
-                [this, y, x, startZ, endZ]()
-                {
-                    hazardManager->SpawnLinearHazard(
-                        HazardType::RollingLog,
-                        glm::vec3(x, y, startZ),
-                        glm::vec3(x, y, endZ),
-                        2.2f,
-                        false);
-                });
-        }
+        // Nothing else belongs in this section. A rolling log used to run
+        // its whole length; it now rolls through the cannonball section
+        // instead, so the finale reads as exactly two hazards.
     }
 
-    // Rolling Rock gauntlet: three boulders roll the length of the field
-    // from just outside the King's Cage back toward the Checkpoint,
-    // reading as the battlefield collapsing in behind the player rather
-    // than a short preview confined to one section.
+    // Rolling Rock gauntlet: three boulders roll back down the middle of the
+    // level, reading as the battlefield collapsing in behind the player
+    // rather than a short preview confined to one section.
     //
-    // Playtest feedback: a single rock rolling only through the 3-row
-    // Cannonball section didn't read as a real threat. Moving the start
-    // to the King's Cage and adding two more lanes gives it the length
-    // and coverage to feel like one.
+    // Bounded to the stretch between the first checkpoint and the last
+    // woodland. It used to start at the King's Cage and roll the entire
+    // field, which sent boulders straight through the finale and across the
+    // final approach - both of which are meant to be free of them.
     {
-        auto kingsCageRows = FindConsecutiveRowsOfType(*level, LaneType::KingsCage);
+        const auto woodlandRuns = FindRunsOfType(*level, LaneType::FenceTree);
         const int checkpointRow = level->FindRowOfType(LaneType::Checkpoint);
 
-        const Lane* startLane = kingsCageRows.empty() ? nullptr : kingsCageRows.back();
+        const Lane* startLane =
+            (woodlandRuns.empty() || woodlandRuns.back().empty())
+            ? nullptr
+            : woodlandRuns.back().back();
+
         const Lane* endLane = level->GetLane(checkpointRow);
 
         if (startLane && endLane)

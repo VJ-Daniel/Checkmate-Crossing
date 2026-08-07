@@ -792,7 +792,20 @@ void Pawn::SetKnockback(const glm::vec3& knockbackVector, bool isCow /* = false 
 {
     // This function is called by the collision system via the onKnockback callback.
     velocity += knockbackVector;
-    knockbackTimer = 0.35f; // Prevent input for 0.35 seconds
+
+    // A cow's shove does not take the controls away.
+    //
+    // Every other hazard hits once and the 0.35s lockout is what sells it.
+    // The cow now stays in contact and shoves on every frame, so that same
+    // lockout would be refreshed before it could ever expire: the player
+    // would be pinned against the cow with no input, permanently. Leaving
+    // them in control is also what makes the push mean anything - it is a
+    // shove to struggle out of, not a stun.
+    //
+    // Nothing accumulates either, because HandleInput rebuilds velocity from
+    // the stick each frame before this is added on top.
+    if (!isCow)
+        knockbackTimer = 0.35f; // Prevent input for 0.35 seconds
 
     // Store who knocked us back
     knockedBackByCow = isCow;

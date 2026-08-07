@@ -148,35 +148,83 @@ void Level::Build()
     // The pawn stands on the last start-area row.
     spawnRow = nextRow - 1;
 
+    // The level runs as four checkpointed sections, each about a dozen rows
+    // long, then a clear approach to the King.
+    //
+    // Length is the point. The previous layout packed everything into 31
+    // rows and put its last two checkpoints four rows apart, so the back
+    // half arrived in a rush and the finale had no room to breathe. Every
+    // section now gets space to establish its own idea, and a hazard type
+    // may appear in more than one section - the placement code walks every
+    // run of a type, not just the first.
+
+    //-----------------------------------------------------------
+    // Section 1: arrows, then the spike/mud field.
+    //-----------------------------------------------------------
+
     // The first hazard lane is kept short and close, so the player meets a
     // dangerous row inside the opening view rather than after a long walk
     // across safe ground.
     AddLanes(LaneType::SafeGrass, 1);
-    AddLanes(LaneType::Arrow, 2);
+    AddLanes(LaneType::Arrow, 3);
 
-    AddLanes(LaneType::SafeGrass, 3);
+    AddLanes(LaneType::SafeGrass, 2);
     AddLanes(LaneType::SpikeMud, 3);
+    AddLanes(LaneType::SafeGrass, 1);
 
-    // GDD: a checkpoint roughly every 20 units of progress. One here and
-    // two more further on, so a death late in the run never sends the
-    // player all the way back to the start.
+    // GDD: a checkpoint roughly every 20 units of progress.
     AddLanes(LaneType::Checkpoint, 1);
 
+    //-----------------------------------------------------------
+    // Section 2: cannonballs, then the fenced woodland the cow patrols.
+    //-----------------------------------------------------------
+
+    AddLanes(LaneType::SafeGrass, 1);
     AddLanes(LaneType::Cannonball, 3);
+    AddLanes(LaneType::SafeGrass, 2);
+    AddLanes(LaneType::FenceTree, 4);
+    AddLanes(LaneType::SafeGrass, 1);
+
+    AddLanes(LaneType::Checkpoint, 1);
+
+    //-----------------------------------------------------------
+    // Section 3: everything at once, at a harder spacing. These are second
+    // runs of types already used above, which is why placement resolves
+    // runs rather than a single first row.
+    //-----------------------------------------------------------
+
+    AddLanes(LaneType::SafeGrass, 1);
+    AddLanes(LaneType::Arrow, 2);
+    AddLanes(LaneType::SafeGrass, 1);
+    AddLanes(LaneType::SpikeMud, 2);
+    AddLanes(LaneType::SafeGrass, 1);
     AddLanes(LaneType::FenceTree, 3);
-    AddLanes(LaneType::FireballLightning, 3);
+    AddLanes(LaneType::SafeGrass, 1);
 
-    // Second checkpoint: a reward right after the hardest escalation
-    // section, so reaching it doesn't mean re-running that gauntlet after
-    // every later death.
     AddLanes(LaneType::Checkpoint, 1);
 
-    AddLanes(LaneType::FinalSafeArea, 3);
+    //-----------------------------------------------------------
+    // Section 4: the finale. Fireballs and lightning only - no arrows, no
+    // rolling anything, no cow. Whatever else the battlefield has thrown up
+    // to here stops at the checkpoint above, so the last test is a clean
+    // read of two hazards rather than a scramble through all of them.
+    //-----------------------------------------------------------
 
-    // Third checkpoint: a last chance right before the finale.
+    AddLanes(LaneType::SafeGrass, 2);
+    AddLanes(LaneType::FireballLightning, 5);
+    AddLanes(LaneType::SafeGrass, 1);
+
+    // The final checkpoint, and from here the player's last respawn point.
     AddLanes(LaneType::Checkpoint, 1);
 
-    AddLanes(LaneType::KingsCage, 2);
+    //-----------------------------------------------------------
+    // The approach. Nothing is placed beyond this point: no hazards, no
+    // props, just the walk up to the cage. Earning it is the reward.
+    //-----------------------------------------------------------
+
+    AddLanes(LaneType::FinalSafeArea, 6);
+
+    AddLanes(LaneType::KingsCage, 4);
 
     BuildDecorations();
 }

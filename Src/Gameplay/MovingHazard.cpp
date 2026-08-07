@@ -161,6 +161,11 @@ bool MovingHazard::IsFollowing() const
     return following;
 }
 
+void MovingHazard::SetFollowLimitZ(float minimumZ)
+{
+    followMinZ = minimumZ;
+}
+
 void MovingHazard::SetFacesTravel(bool shouldFaceTravel)
 {
     facesTravel = shouldFaceTravel;
@@ -491,7 +496,22 @@ void MovingHazard::UpdateFollowTarget(
 
     velocity = direction * followMaxSpeed;
 
-    MoveVisualTo(currentPosition + direction * step);
+    glm::vec3 next = currentPosition + direction * step;
+
+    // Leash. Rows run toward -Z, so this is the furthest along the level the
+    // hazard may chase. Without it a follower simply walks into whatever
+    // comes next -- a cow tailing the player into a section that is supposed
+    // to hold nothing but fireballs and lightning.
+    if (next.z < followMinZ)
+    {
+        next.z = followMinZ;
+
+        // Report what it is actually doing, so a leashed follower pressed
+        // against its limit does not read as still charging forward.
+        velocity.z = 0.0f;
+    }
+
+    MoveVisualTo(next);
 }
 
 void MovingHazard::MoveVisualTo(const glm::vec3& groundPosition)
