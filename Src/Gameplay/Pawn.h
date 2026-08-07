@@ -391,4 +391,6 @@ private:
     float health = 5.0f; // Pawn starts with 5 HP
 
     glm::vec3 pawnBaseScale;
+
+    float footstepTimer = 0.0f;
 };

@@ -26,6 +26,7 @@
 #include "PieceAnimator.h"
 #include "PieceMeshFactory.h"
 #include "PieceRig.h"
+#include "AudioManager.h"
 
 namespace
 {
@@ -99,7 +100,8 @@ void Pawn::Initialize()
 }
 
 void Pawn::Update(float deltaTime)
-{
+{   
+
     // Mud and bushes slow the pawn for a while after it walks through them.
     if (slowTimer > 0.0f)
     {
@@ -171,6 +173,20 @@ void Pawn::Update(float deltaTime)
         position.x = glm::clamp(position.x, -halfWidth, halfWidth);
     }
 
+    if (footstepTimer > 0.0f)
+    {
+        footstepTimer -= deltaTime;
+    }
+
+    // If we are moving on the ground, play a footstep every 0.25 seconds
+    // ... inside your Update loop ...
+    if (IsMoving() && IsGrounded() && footstepTimer <= 0.0f)
+    {
+        std::cout << ">>> PLAYING FOOTSTEP SOUND <<<" << std::endl;
+        AudioManager::PlayFootstep("Src/Resources/Sounds/walk.wav");
+        footstepTimer = 0.25f;
+    }
+
     transform.SetPosition(position);
 
     ApplyTerrainHeight();
@@ -227,6 +243,7 @@ void Pawn::HandleInput()
     if (interactDown && !interactKeyWasDown)
     {
         interactPulsePending = true;
+        AudioManager::PlaySound("Src/Resources/Sounds/transform.wav");
     }
     interactKeyWasDown = interactDown;
 }
@@ -411,6 +428,7 @@ void Pawn::TryJump()
 
     isAirborne = true;
     jumpVerticalVelocity = GameConfig::JumpInitialVelocity;
+    AudioManager::PlaySound("Src/Resources/Sounds/jump.wav");
 }
 
 void Pawn::UpdateJump(float deltaTime)
@@ -474,6 +492,7 @@ void Pawn::CollectPiece(PieceType type)
     }
 
     std::cout << "Pawn transformed into a " << GetPieceTypeName(type) << "!" << std::endl;
+    AudioManager::PlaySound("Src/Resources/Sounds/transform.wav");
 }
 
 bool Pawn::HasStoredPiece() const
@@ -727,6 +746,7 @@ void Pawn::TakeDamage(float damage)
 
     // Print to console for debugging
     std::cout << "Pawn took " << damage << " damage! HP: " << health << std::endl;
+    AudioManager::PlaySound("Src/Resources/Sounds/damage_taken.wav");
 
     if (health <= 0.0f)
     {
