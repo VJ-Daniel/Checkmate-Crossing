@@ -303,5 +303,20 @@ namespace GameConfig
     /// Lightning strike
     constexpr float LightningStrikeRadius = 0.5f;
     constexpr float LightningDamage = 1.0f;
+
+    //---------------------------------------------------------
+    // Sheep AI (Ayub)
+    //
+    // The sheep grazes until the pawn comes within detection range, then
+    // follows while keeping a standoff distance rather than overlapping.
+    // Detection is deliberately well above the follow distance, or it would
+    // notice and stop in the same instant and never take a step.
+    //---------------------------------------------------------
+
+    /// How close the pawn must come before a sheep starts following.
+    constexpr float SheepDetectionRange = 5.0f;
+
+    /// The gap a following sheep tries to keep from the pawn.
+    constexpr float SheepFollowDistance = 1.5f;
 }
 

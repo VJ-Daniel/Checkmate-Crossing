@@ -126,15 +126,26 @@ void MovingHazard::SetTemporaryZone(
         visual->SetGroundPosition(groundPosition);
 }
 
-void MovingHazard::SetFollowTarget(float maxSpeed)
+void MovingHazard::SetFollowTarget(
+    float maxSpeed,
+    float detectionRange,
+    float followDistanceValue)
 {
     pattern = HazardMovementPattern::FollowTarget;
 
     followMaxSpeed = maxSpeed;
+    followDetectionRange = detectionRange;
+    followDistance = followDistanceValue;
+    following = false;
 
     active = true;
     expired = false;
     velocity = glm::vec3(0.0f);
+}
+
+bool MovingHazard::IsFollowing() const
+{
+    return following;
 }
 
 void MovingHazard::EnableRolling(float radius, RollAxisMode axisMode)
@@ -310,7 +321,7 @@ void MovingHazard::UpdateFollowTarget(
 {
     const glm::vec3 currentPosition = visual->GetGroundPosition();
 
-    // Chases across the ground plane only; height-following (if the cow
+    // Chases across the ground plane only; height-following (if the sheep
     // needs to cross lanes of different surface height) is left to
     // whatever places it, the same way the pawn follows terrain itself.
     glm::vec3 toTarget = targetGroundPosition - currentPosition;
@@ -318,14 +329,37 @@ void MovingHazard::UpdateFollowTarget(
 
     const float distance = glm::length(toTarget);
 
-    if (distance < 0.01f)
+    // Detection gate: the sheep grazes until the player wanders within
+    // range, and gives up once the player gets far enough away again. This
+    // is what stops it beelining across the whole field from the moment it
+    // spawns.
+    if (distance > followDetectionRange)
+    {
+        following = false;
+        velocity = glm::vec3(0.0f);
+        return;
+    }
+
+    following = true;
+
+    // Standoff: close the gap only while further than followDistance, and
+    // stop once inside it, so the sheep trails the player at a distance
+    // instead of overlapping. A small band below followDistance is left
+    // alone rather than corrected, so it doesn't jitter forward-and-back on
+    // the boundary while the player stands still.
+    if (distance <= followDistance)
     {
         velocity = glm::vec3(0.0f);
         return;
     }
 
     const glm::vec3 direction = toTarget / distance;
-    const float step = std::min(followMaxSpeed * deltaTime, distance);
+
+    // Never overshoot the standoff ring in a single step: clamp the move to
+    // whatever distance remains between here and followDistance out from the
+    // target.
+    const float distanceToRing = distance - followDistance;
+    const float step = std::min(followMaxSpeed * deltaTime, distanceToRing);
 
     velocity = direction * followMaxSpeed;
 
