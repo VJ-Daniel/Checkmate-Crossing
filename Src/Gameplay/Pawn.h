@@ -306,6 +306,16 @@ private:
     /// Counts down an active timed ability and clears it on expiry.
     void UpdateAbility(float deltaTime);
 
+    /// Swaps only the visible body and collision footprint. Ability state is
+    /// intentionally left alone so temporary ability forms can expire cleanly.
+    bool SetVisualCharacter(PieceType newCharacter, PieceMeshLibrary& meshLibrary);
+
+    /// Applies the model associated with a just-activated ability.
+    void ApplyAbilityVisual(PieceType abilityType);
+
+    /// Returns the player to the normal pawn model after a temporary form.
+    void RestorePawnVisual();
+
     /// Puts the shadow back under the pawn's current position.
     void UpdateShadow();
 
@@ -374,6 +384,8 @@ private:
     PieceType activeAbilityType = PieceType::Bishop;
 
     float abilityTimeRemaining = 0.0f;
+
+    float abilityVisualTimeRemaining = 0.0f;
 
     bool shieldAvailable = false;
 
