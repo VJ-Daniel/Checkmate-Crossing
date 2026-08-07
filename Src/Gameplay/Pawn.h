@@ -383,7 +383,7 @@ private:
 
     PieceType activeAbilityType = PieceType::Bishop;
 
-    float abilityTimeRemaining = 0.0f;
+    float abilityTimeRemaining = -1.0f;
 
     float abilityVisualTimeRemaining = 0.0f;
 

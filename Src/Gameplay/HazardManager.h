@@ -6,6 +6,7 @@
 
 #include <glm.hpp>
 
+#include "GameConfig.h"
 #include "MovingHazard.h"
 #include "Obstacle.h"
 #include "ObstacleMeshFactory.h"
@@ -86,13 +87,19 @@ public:
         const glm::vec3& groundPosition,
         float duration);
 
-    /// A cow that continuously chases the pawn. Uses the stationary-prop
-    /// Cow model (ObstacleType::Cow) rather than a Hazard model, since
-    /// that's where the existing mesh for it already lives -- see the
-    /// note in Obstacle.h about its enum placement.
+    /// A sheep that grazes until the pawn comes within detectionRange, then
+    /// follows while keeping followDistance from it (per the refinement
+    /// task). Uses the stationary-prop Cow model (ObstacleType::Cow) rather
+    /// than a Hazard model, since that's where the existing mesh for it
+    /// already lives -- see the note in Obstacle.h about its enum placement.
+    ///
+    /// detectionRange/followDistance default from GameConfig; pass explicit
+    /// values to make a particular sheep warier or clingier.
     MovingHazard& SpawnCow(
         const glm::vec3& startGroundPosition,
-        float maxSpeed);
+        float maxSpeed,
+        float detectionRange = GameConfig::SheepDetectionRange,
+        float followDistance = GameConfig::SheepFollowDistance);
 
     /// Removes up to `maxCount` of the stationary props nearest to origin,
     /// ignoring any that lie further away than radius. Used by the pawn's

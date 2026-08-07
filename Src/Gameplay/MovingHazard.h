@@ -148,11 +148,31 @@ public:
         const glm::vec3& groundPosition,
         float duration);
 
-    /// Chases whatever position Update() is given, capped to maxSpeed.
-    /// The visual's current ground position (set by the caller beforehand,
-    /// e.g. via CreateObstacle(...)->SetGroundPosition(...)) is where it
-    /// starts from.
-    void SetFollowTarget(float maxSpeed);
+    /// Chases a target with simple "sheep" AI (per the refinement task):
+    ///
+    ///   - It ignores the target until the target comes within
+    ///     detectionRange. Before that it stands still, and once the
+    ///     target leaves that range again it stops and waits.
+    ///   - Once following, it holds followDistance from the target rather
+    ///     than sticking to it: it closes the gap only while further away
+    ///     than that, and stops once it's within it.
+    ///
+    /// maxSpeed caps how fast it moves while closing. The visual's current
+    /// ground position (set by the caller beforehand, e.g. via
+    /// CreateObstacle(...)->SetGroundPosition(...)) is where it starts from.
+    ///
+    /// detectionRange <= followDistance would mean "notice and stop at the
+    /// same time" (it would never take a step), so callers should keep
+    /// detectionRange comfortably larger than followDistance.
+    void SetFollowTarget(
+        float maxSpeed,
+        float detectionRange,
+        float followDistance);
+
+    /// True once the target has come within detection range and the sheep
+    /// has begun following. Exposed so animation (John) or collision
+    /// (Kaung) can tell an alert, moving sheep from an idle grazing one.
+    bool IsFollowing() const;
 
     /// Connects the visual-only rolling component to this mover. Translation
     /// remains owned here; RollingMotion derives spin from the actual distance
@@ -368,4 +388,15 @@ private:
     // --- FollowTarget ---
 
     float followMaxSpeed = 2.0f;
+
+    /// How close the target must come before the sheep starts following.
+    float followDetectionRange = 5.0f;
+
+    /// The gap the sheep tries to keep once following, so it trails the
+    /// target rather than overlapping it.
+    float followDistance = 1.5f;
+
+    /// Latched true the first time the target enters detection range, and
+    /// back to false whenever the target is outside it again.
+    bool following = false;
 };

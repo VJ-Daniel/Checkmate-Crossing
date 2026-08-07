@@ -448,5 +448,20 @@ namespace GameConfig
     // floor fire and Lightning sections above -- this copy was never read
     // by anything, while the collision pass hardcoded its own values, so
     // changing these had no effect at all.
+
+    //---------------------------------------------------------
+    // Sheep AI (Ayub)
+    //
+    // The sheep grazes until the pawn comes within detection range, then
+    // follows while keeping a standoff distance rather than overlapping.
+    // Detection is deliberately well above the follow distance, or it would
+    // notice and stop in the same instant and never take a step.
+    //---------------------------------------------------------
+
+    /// How close the pawn must come before a sheep starts following.
+    constexpr float SheepDetectionRange = 5.0f;
+
+    /// The gap a following sheep tries to keep from the pawn.
+    constexpr float SheepFollowDistance = 1.5f;
 }
 
