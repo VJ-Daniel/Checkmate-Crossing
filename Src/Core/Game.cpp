@@ -334,6 +334,7 @@ bool Game::Initialize(
     std::cout << "Game initialized with " << stationaryHazards.size() << " stationary hazards." << std::endl;
 
 
+
     return true;
 }
 
@@ -709,6 +710,73 @@ void Game::BuildLevelObstacles()
                 placeMixedBarrier(
                     *rows[2], ObstacleType::Wall, ObstacleType::Fence,
                     halfWidth * 0.40f, GapHalfWidth, 1.10f);
+            }
+        }
+    }
+
+    //-----------------------------------------------------------
+    // Collectible stashes.
+    //
+    // Props framing each collectible ally, so a piece reads as something
+    // stowed in a defended spot rather than dropped in a gap. Deliberately
+    // pairs and singles, never a barrier: each leaves its row open on both
+    // sides, so a player who does not want the piece walks past without ever
+    // being funnelled. The positions match BuildLevelCollectibles.
+    //-----------------------------------------------------------
+    {
+        const auto laneAt =
+            [](const std::vector<const Lane*>& rows, std::size_t index)
+            -> const Lane*
+            {
+                return index < rows.size() ? rows[index] : nullptr;
+            };
+
+        const auto arrowRuns = FindRunsOfType(*level, LaneType::Arrow);
+        const auto spikeRuns = FindRunsOfType(*level, LaneType::SpikeMud);
+        const auto cannonRuns = FindRunsOfType(*level, LaneType::Cannonball);
+        const auto grassRuns = FindRunsOfType(*level, LaneType::SafeGrass);
+
+        // Bishop's nook: two stakes making an alcove off the side of the
+        // spear row, so the piece is tucked out of the through-line.
+        if (arrowRuns.size() >= 1)
+        {
+            if (const Lane* row = laneAt(arrowRuns[0], 1))
+            {
+                place(ObstacleType::Palisade, -4.10f, *row);
+                place(ObstacleType::Palisade, -1.50f, *row);
+            }
+        }
+
+        // Knight's screen: a rock on the row in front, so the piece cannot
+        // be taken head-on in a straight line - the approach has to come in
+        // from the side, which is the side the arrow sweeps from.
+        if (spikeRuns.size() >= 1)
+        {
+            if (const Lane* row = laneAt(spikeRuns[0], 0))
+                place(ObstacleType::Rock, 0.20f, *row);
+        }
+
+        // Rook's pocket: fences either side inside the cannonball lane. They
+        // do not stop the cannonball, which is the point - they mark the
+        // spot and take away the room to stroll out sideways.
+        if (cannonRuns.size() >= 1)
+        {
+            if (const Lane* row = laneAt(cannonRuns[0], 1))
+            {
+                place(ObstacleType::Fence, -4.00f, *row);
+                place(ObstacleType::Fence, -1.70f, *row);
+            }
+        }
+
+        // The Queen's alley: two walls well clear of both spear impacts,
+        // closing off the sideways escape from the crossfire row and framing
+        // the band she sits in.
+        if (grassRuns.size() >= 8)
+        {
+            if (const Lane* row = laneAt(grassRuns[7], 0))
+            {
+                place(ObstacleType::Wall, -2.70f, *row);
+                place(ObstacleType::Wall, 4.00f, *row);
             }
         }
     }
@@ -1268,66 +1336,74 @@ void Game::BuildLevelCollectibles()
 
     const float halfWidth = Level::GetPlayableHalfWidth();
 
-    // Bishop (clears nearby moving hazards): the single SafeGrass row
-    // right before the Arrow section.
-    {
-        const int row = level->FindRowOfType(LaneType::Arrow) - 1;
+    //-----------------------------------------------------------
+    // Collectible allies.
+    //
+    // Each one is stashed inside a hazard section rather than left on the
+    // safe ground between them. They used to sit on open grass, and the
+    // Rook was on the checkpoint row itself - all four were picked up by
+    // walking forward, which is not a decision.
+    //
+    // Every position below is off the straight line down the level, so
+    // ignoring a piece costs nothing and going for one is a choice. None of
+    // them is placed inside an obstacle, inside a spear's landing zone, or
+    // in a spot that can only be reached by eating a hit; BuildLevelObstacles
+    // frames each with props to make it read as a stash rather than a piece
+    // dropped in a gap.
+    //
+    // Difficulty climbs with the level: an arrow field, then a spike field,
+    // then a cannonball lane, then the crossfire row.
+    //-----------------------------------------------------------
 
-        if (const Lane* lane = level->GetLane(row))
+    const auto laneAt =
+        [](const std::vector<const Lane*>& rows, std::size_t index) -> const Lane*
         {
-            collectibleManager->Spawn(
-                PieceType::Bishop,
-                glm::vec3(0.0f, lane->GetSurfaceHeight(), lane->GetCenterZ()));
-        }
-    }
+            return index < rows.size() ? rows[index] : nullptr;
+        };
 
-    // Knight (speed + immunity): the middle row of the SafeGrass x3 block
-    // right before SpikeMud.
-    {
-        const int row = level->FindRowOfType(LaneType::SpikeMud) - 2;
+    const auto arrowRuns = FindRunsOfType(*level, LaneType::Arrow);
+    const auto spikeRuns = FindRunsOfType(*level, LaneType::SpikeMud);
+    const auto cannonRuns = FindRunsOfType(*level, LaneType::Cannonball);
+    const auto grassRuns = FindRunsOfType(*level, LaneType::SafeGrass);
 
-        if (const Lane* lane = level->GetLane(row))
+    const auto stash =
+        [this](PieceType type, const Lane* target, float x)
         {
+            if (!target)
+                return;
+
             collectibleManager->Spawn(
-                PieceType::Knight,
-                glm::vec3(0.0f, lane->GetSurfaceHeight(), lane->GetCenterZ()));
-        }
-    }
+                type,
+                glm::vec3(x, target->GetSurfaceHeight(), target->GetCenterZ()));
+        };
 
-    // Rook (shield): on the Checkpoint row itself, right before Cannonball.
-    // Keep it centred on the approach side of the wall: VJ's solid gate
-    // frame leaves only the doorway reachable, so Liyyu's original side
-    // offset would place the collectible inside the right-hand wall.
-    {
-        const int row = level->FindRowOfType(LaneType::Checkpoint);
+    // Bishop: the spear row, sandwiched between the two arrow lanes of the
+    // first field. Reaching it means crossing one sweeping arrow, standing
+    // in the lane the spears are thrown along, and crossing the second to
+    // get out. Set well left of where those spears come down.
+    if (arrowRuns.size() >= 1)
+        stash(PieceType::Bishop, laneAt(arrowRuns[0], 1), -2.80f);
 
-        if (const Lane* lane = level->GetLane(row))
-        {
-            collectibleManager->Spawn(
-                PieceType::Rook,
-                glm::vec3(
-                    0.0f,
-                    lane->GetSurfaceHeight(),
-                    lane->GetCenterZ() + GameConfig::TileSize * 0.35f));
-        }
-    }
+    // Knight: the middle of the first spike field, in the strip between the
+    // mud on one side and the spike bed on the other, with the field's slow
+    // arrow sweeping straight through it. The gap is wide enough to stand
+    // in safely - the timing of the arrow is the whole test.
+    if (spikeRuns.size() >= 1)
+        stash(PieceType::Knight, laneAt(spikeRuns[0], 1), 0.75f);
 
-    // Queen (combined abilities): the clear gap on the right side of the
-    // last FenceTree row, right before the FireballLightning gauntlet --
-    // there is no SafeGrass row between those two sections.
-    {
-        const int row = level->FindRowOfType(LaneType::FireballLightning) - 1;
+    // Rook: inside the cannonball lane, on the far side from the rolling
+    // log. Cannonballs cross this exact spot, so it has to be taken between
+    // two of them; the shield is a fitting reward for standing in front of
+    // one.
+    if (cannonRuns.size() >= 1)
+        stash(PieceType::Rook, laneAt(cannonRuns[0], 1), -2.90f);
 
-        if (const Lane* lane = level->GetLane(row))
-        {
-            collectibleManager->Spawn(
-                PieceType::Queen,
-                glm::vec3(
-                    halfWidth * 0.7f,
-                    lane->GetSurfaceHeight(),
-                    lane->GetCenterZ()));
-        }
-    }
+    // Queen: the crossfire row, the hardest ground before the finale. Two
+    // spears come down on this row from opposite sides, and she sits in the
+    // band between their two impact zones - close enough to both that it
+    // has to be timed, far enough from either to be safe once timed.
+    if (grassRuns.size() >= 8)
+        stash(PieceType::Queen, laneAt(grassRuns[7], 0), 0.75f);
 
     // Same presentation pass as before: the allies stand still until they
     // are picked up, so the horse-bodied ones are shown in profile.
@@ -2821,6 +2897,7 @@ void Game::Update(float deltaTime)
 
     if (hazardManager && pawn)
         hazardManager->Update(deltaTime, pawn->GetTransform().GetPosition());
+
 
 
     // ---- Update Hazard Collision ----
