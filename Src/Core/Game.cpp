@@ -978,7 +978,7 @@ void Game::UpdateDoors(float deltaTime)
         if (newAngle >= CheckpointGate::GetMaxDoorAngle()) {
             checkpointGateOpening[i] = false;
 
-            AudioManager::PlaySound("Src/Resources/Sounds/transform.wav");
+            AudioManager::PlaySound("Src/Resources/Sounds/door-open.wav");
         }
     }
 
@@ -1003,9 +1003,8 @@ void Game::UpdateDoors(float deltaTime)
             {
                 kingsCageDoorOpening = false;
 
-                // --- ADD THIS: Play sound when the King's Cage door finishes opening ---
-                AudioManager::PlaySound("Assets/Sounds/door-open.wav");
-                // ---------------------------------------------------------------------
+                // Play sound when the King's Cage door finishes opening
+                AudioManager::PlaySound("Src/Resources/Sounds/door-open.wav");
             }
         }
     }

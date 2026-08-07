@@ -239,11 +239,13 @@ void Pawn::HandleInput()
     // E: Interact OR Activate Banked Ability
     // We set a pulse here. Game.cpp will check for doors/gates first.
     // If you're not near a door/gate, Game.cpp falls back to TryActivateAbility().
+    // (The sound for actually activating a skill lives in TryActivateAbility()
+    // itself, not here -- this fires on every E press, whether or not there's
+    // a stored ability or a door nearby to react to it.)
     const bool interactDown = Input::IsKeyPressed(Key::E);
     if (interactDown && !interactKeyWasDown)
     {
         interactPulsePending = true;
-        AudioManager::PlaySound("Src/Resources/Sounds/transform.wav");
     }
     interactKeyWasDown = interactDown;
 }
@@ -512,6 +514,8 @@ void Pawn::TryActivateAbility()
 
     activeAbilityType = storedPieceType;
     hasStoredPiece = false;
+
+    AudioManager::PlaySound("Src/Resources/Sounds/ability_activate.wav");
 
     std::cout << ">>> ACTIVATING ABILITY: " << GetPieceTypeName(activeAbilityType) << " <<<" << std::endl;
 

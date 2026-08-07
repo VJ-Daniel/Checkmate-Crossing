@@ -1,7 +1,7 @@
 #include "AudioManager.h"
 #include <iostream>
 
-Mix_Chunk* AudioManager::soundChunk = nullptr;
+std::unordered_map<std::string, Mix_Chunk*> AudioManager::soundCache;
 int AudioManager::footstepChannel = -1;
 Mix_Music* AudioManager::music = nullptr;
 
@@ -18,19 +18,39 @@ void AudioManager::Shutdown() {
 	Mix_HaltMusic();
 	Mix_FreeMusic(music);
 	music = nullptr;
-	Mix_FreeChunk(soundChunk);
-	soundChunk = nullptr;
+
+	// All channels are done mixing once the audio device is closed below,
+	// so it's safe to free every cached chunk here in one pass.
+	for (auto& entry : soundCache) {
+		if (entry.second)
+			Mix_FreeChunk(entry.second);
+	}
+	soundCache.clear();
+
 	Mix_CloseAudio();
 }
 
-void AudioManager::PlaySound(const std::string& filePath) {
-	soundChunk = Mix_LoadWAV(filePath.c_str());
-	if (!soundChunk) {
+Mix_Chunk* AudioManager::GetOrLoadChunk(const std::string& filePath) {
+	auto it = soundCache.find(filePath);
+	if (it != soundCache.end())
+		return it->second;
+
+	Mix_Chunk* chunk = Mix_LoadWAV(filePath.c_str());
+	if (!chunk) {
 		std::cerr << "Failed to load sound: " << filePath << std::endl;
+		return nullptr;
+	}
+
+	soundCache[filePath] = chunk;
+	return chunk;
+}
+
+void AudioManager::PlaySound(const std::string& filePath) {
+	Mix_Chunk* chunk = GetOrLoadChunk(filePath);
+	if (!chunk)
 		return;
 
-	}
-	Mix_PlayChannel(-1, soundChunk, 0);
+	Mix_PlayChannel(-1, chunk, 0);
 }
 
 void AudioManager::PlayMusic(const std::string& filePath) {
@@ -56,13 +76,10 @@ void AudioManager::PlayFootstep(const std::string& filePath)
 		Mix_HaltChannel(footstepChannel);
 	}
 
-	soundChunk = Mix_LoadWAV(filePath.c_str());
-	if (!soundChunk)
-	{
-		std::cerr << "Failed to load sound: " << filePath << std::endl;
+	Mix_Chunk* chunk = GetOrLoadChunk(filePath);
+	if (!chunk)
 		return;
-	}
 
 	// Play it and store the channel number
-	footstepChannel = Mix_PlayChannel(-1, soundChunk, 0);
+	footstepChannel = Mix_PlayChannel(-1, chunk, 0);
 }
