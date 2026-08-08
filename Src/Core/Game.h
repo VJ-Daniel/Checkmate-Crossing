@@ -224,6 +224,20 @@ private:
         float initialDelay,
         float reach);
 
+    /// A log rolling down the level rather than across it.
+    ///
+    /// The one hazard that travels along Z, so it threatens a corridor for
+    /// its whole length instead of a single row - which only works if it is
+    /// given a run long enough to be seen coming. Stops early if it meets
+    /// anything solid, like the boulders.
+    void RegisterRollingLogLane(
+        float surfaceHeight,
+        float laneX,
+        float startZ,
+        float endZ,
+        float interval,
+        float initialDelay);
+
     //---------------------------------------------------------
     // Interaction (E)
     //

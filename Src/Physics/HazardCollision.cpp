@@ -181,6 +181,12 @@ void HazardCollision::Update(
     if (damageCooldownRemaining > 0.0f)
         damageCooldownRemaining -= deltaTime;
 
+    // Stop any boulder or log that has rolled into something solid. Done
+    // before the pawn passes below, so a rock that ended its run this frame
+    // is already out of the way rather than landing one last hit from inside
+    // the wall it struck.
+    CheckRollingHazardsAgainstObstacles(movingHazards, stationaryHazards);
+
     // Check moving hazards
     CheckMovingHazards(movingHazards);
 
@@ -307,6 +313,51 @@ void HazardCollision::CheckMovingHazards(
     }
 }
 
+void HazardCollision::CheckRollingHazardsAgainstObstacles(
+    const std::vector<std::unique_ptr<MovingHazard>>& movingHazards,
+    const std::vector<std::shared_ptr<StaticObstacle>>& obstacles)
+{
+    for (const auto& hazard : movingHazards)
+    {
+        if (!hazard || hazard->HasExpired())
+            continue;
+
+        const Hazard* visual =
+            dynamic_cast<const Hazard*>(&hazard->GetVisual());
+
+        if (!visual)
+            continue;
+
+        const HazardType type = visual->GetType();
+
+        if (type != HazardType::RollingRock &&
+            type != HazardType::RollingLog)
+        {
+            continue;
+        }
+
+        // Built from the same helper the pawn is tested with, so what stops
+        // the boulder is the volume the player sees it occupy.
+        const CollisionComponent rolling = GetHazardCollision(*hazard);
+
+        for (const auto& obstacle : obstacles)
+        {
+            if (!obstacle || !IsSolidObstacle(obstacle->GetType()))
+                continue;
+
+            if (!rolling.Intersects(GetObstacleCollision(*obstacle)))
+                continue;
+
+            // Ended on contact rather than pushed back out. A boulder that
+            // has hit a wall has finished its run, and stopping it dead
+            // leaves it resting against the face it struck instead of
+            // halfway inside it.
+            hazard->Expire();
+            break;
+        }
+    }
+}
+
 void HazardCollision::CheckStationaryHazards(
     const std::vector<std::shared_ptr<StaticObstacle>>& hazards)
 {
@@ -323,8 +374,19 @@ void HazardCollision::CheckStationaryHazards(
         if (pawnCollision.Intersects(obstacleCollision))
         {
             ObstacleType type = obstacle->GetType();
-            glm::vec3 pawnVelocity = pawn->GetVelocity();
-            bool isJumping = (pawnVelocity.y > 0.1f);
+
+            // Straight off the jump state, which is the authority on it.
+            //
+            // This used to read velocity.y, and had the answer exactly
+            // backwards in both directions. Jumping never touches velocity -
+            // Pawn::UpdateJump drives jumpVerticalVelocity and jumpHeight,
+            // which are separate - so a real jump always reported false, and
+            // Fence, Rock and Palisade could not be cleared at all however
+            // well the leap was timed. Meanwhile the only thing that ever
+            // did set velocity.y was knockback's upward bounce, so being hit
+            // was the one state the game accepted as "jumping", and a shove
+            // let the player through obstacles a jump could not clear.
+            const bool isJumping = pawn->IsAirborne();
 
             // ==========================================
             // 1. WALLS & TREES: Completely Block (Cannot be jumped over)

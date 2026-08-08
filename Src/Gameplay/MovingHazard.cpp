@@ -626,6 +626,15 @@ HazardMovementPattern MovingHazard::GetMovementPattern() const
     return pattern;
 }
 
+void MovingHazard::Expire()
+{
+    expired = true;
+
+    // Stops dead as well as dying, so nothing reads a stale velocity from it
+    // during the frame between being stopped and being removed.
+    velocity = glm::vec3(0.0f);
+}
+
 float MovingHazard::GetPhaseElapsed() const
 {
     return phaseElapsed;

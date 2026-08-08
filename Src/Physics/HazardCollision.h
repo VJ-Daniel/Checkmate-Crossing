@@ -43,6 +43,22 @@ public:
     void CheckStationaryHazards(
         const std::vector<std::shared_ptr<StaticObstacle>>& hazards);
 
+    /// Stops rolling hazards that have run into something solid.
+    ///
+    /// The only place in the game where one hazard is resolved against the
+    /// scenery rather than against the pawn. Movement patterns interpolate a
+    /// path and know nothing about what is standing on it, so a boulder
+    /// would otherwise roll straight through a wall; this is the pass that
+    /// sees both and ends its run.
+    ///
+    /// Deliberately limited to the rolling types. Arrows, spears and
+    /// cannonballs are airborne, the cow walks around things under its own
+    /// AI, and the lightning and fire zones are not going anywhere - none of
+    /// them should start being stopped by scenery as a side effect of this.
+    void CheckRollingHazardsAgainstObstacles(
+        const std::vector<std::unique_ptr<MovingHazard>>& movingHazards,
+        const std::vector<std::shared_ptr<StaticObstacle>>& obstacles);
+
     /// Check if the pawn is in a danger zone (fire, lightning)
     ///
     /// Needs deltaTime because floor fire burns on its own once-per-second

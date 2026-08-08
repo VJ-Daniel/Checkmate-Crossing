@@ -103,6 +103,31 @@ bool IsAbilityClearable(ObstacleType type)
     return false;
 }
 
+bool IsSolidObstacle(ObstacleType type)
+{
+    switch (type)
+    {
+    case ObstacleType::Tree:
+    case ObstacleType::Rock:
+    case ObstacleType::Fence:
+    case ObstacleType::Wall:
+    case ObstacleType::Palisade:
+        return true;
+
+        // Crossed rather than collided with.
+    case ObstacleType::Bush:
+    case ObstacleType::Mud:
+    case ObstacleType::Spikes:
+        return false;
+
+        // Not scenery at all - it walks around under its own power.
+    case ObstacleType::Cow:
+        return false;
+    }
+
+    return false;
+}
+
 bool IsAbilityClearable(HazardType type)
 {
     switch (type)
