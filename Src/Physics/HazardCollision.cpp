@@ -181,6 +181,12 @@ void HazardCollision::Update(
     if (damageCooldownRemaining > 0.0f)
         damageCooldownRemaining -= deltaTime;
 
+    // Stop any boulder or log that has rolled into something solid. Done
+    // before the pawn passes below, so a rock that ended its run this frame
+    // is already out of the way rather than landing one last hit from inside
+    // the wall it struck.
+    CheckRollingHazardsAgainstObstacles(movingHazards, stationaryHazards);
+
     // Check moving hazards
     CheckMovingHazards(movingHazards);
 
@@ -303,6 +309,51 @@ void HazardCollision::CheckMovingHazards(
             }
 
             ApplyDamage(damage, knockbackDir, knockback);
+        }
+    }
+}
+
+void HazardCollision::CheckRollingHazardsAgainstObstacles(
+    const std::vector<std::unique_ptr<MovingHazard>>& movingHazards,
+    const std::vector<std::shared_ptr<StaticObstacle>>& obstacles)
+{
+    for (const auto& hazard : movingHazards)
+    {
+        if (!hazard || hazard->HasExpired())
+            continue;
+
+        const Hazard* visual =
+            dynamic_cast<const Hazard*>(&hazard->GetVisual());
+
+        if (!visual)
+            continue;
+
+        const HazardType type = visual->GetType();
+
+        if (type != HazardType::RollingRock &&
+            type != HazardType::RollingLog)
+        {
+            continue;
+        }
+
+        // Built from the same helper the pawn is tested with, so what stops
+        // the boulder is the volume the player sees it occupy.
+        const CollisionComponent rolling = GetHazardCollision(*hazard);
+
+        for (const auto& obstacle : obstacles)
+        {
+            if (!obstacle || !IsSolidObstacle(obstacle->GetType()))
+                continue;
+
+            if (!rolling.Intersects(GetObstacleCollision(*obstacle)))
+                continue;
+
+            // Ended on contact rather than pushed back out. A boulder that
+            // has hit a wall has finished its run, and stopping it dead
+            // leaves it resting against the face it struck instead of
+            // halfway inside it.
+            hazard->Expire();
+            break;
         }
     }
 }

@@ -93,6 +93,18 @@ bool IsAbilityClearable(ObstacleType type);
 /// leave and lightning are all off limits, in flight or not.
 bool IsAbilityClearable(HazardType type);
 
+/// Whether this prop is a physical solid that stops things moving into it.
+///
+/// The battlefield's structure: walls, trees, fences, rocks and palisades.
+/// Mud, bushes and spike beds are deliberately not solid - they are ground
+/// the player crosses at a cost rather than something to be stopped by, and
+/// a boulder should roll straight over all three.
+///
+/// Distinct from the player's own blocking rules, which additionally decide
+/// what can be jumped and what hurts on the way over. This is only "is there
+/// something physically in the way".
+bool IsSolidObstacle(ObstacleType type);
+
 /// Base for a renderable obstacle asset instance, stationary or moving.
 ///
 /// This layer owns visual state only: mesh, material, transform and shadow.

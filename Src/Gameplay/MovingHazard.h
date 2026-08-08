@@ -240,6 +240,16 @@ public:
 
     HazardMovementPattern GetMovementPattern() const;
 
+    /// Ends this hazard now, wherever it happens to be.
+    ///
+    /// For a hazard stopped by something the pattern itself knows nothing
+    /// about - a boulder that has rolled into a wall. Movement patterns
+    /// describe a path, not what is standing on it, so the decision belongs
+    /// to whoever can see both; this is how that decision gets back in. The
+    /// owner drops it on its next update, exactly as for a projectile that
+    /// reached the end of its flight.
+    void Expire();
+
     /// Current time inside the warning or strike phase. Only meaningful for
     /// WarningThenStrike hazards such as lightning.
     float GetPhaseElapsed() const;

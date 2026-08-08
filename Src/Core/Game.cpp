@@ -973,27 +973,33 @@ void Game::BuildLevelHazards()
     {
         const auto& rows = cannonRuns[0];
 
-        // A log rolls the length of this section, along Z rather than across
-        // it. It used to run through the fireball/lightning finale, which is
-        // now reserved for those two hazards alone.
+        // Logs roll down the length of this section and out the far side,
+        // two lanes on opposite sides of the corridor and out of step.
+        //
+        // There was one, and it ran from the section's first row to its last
+        // - three rows, two world units. At 2.2 a unit a second that is a log
+        // alive for under a second in every three, covering a stretch barely
+        // longer than the log itself, which is why they read as missing
+        // rather than as a hazard. They now run the section and the open
+        // ground either side of it.
         if (!rows.empty() && rows.front() && rows.back())
         {
             const float y = rows.front()->GetSurfaceHeight();
-            const float startZ = rows.front()->GetCenterZ();
-            const float endZ = rows.back()->GetCenterZ();
-            const float x = halfWidth * 0.44f;
 
-            hazardManager->RegisterRepeatingSpawn(
-                3.0f,
-                [this, y, x, startZ, endZ]()
-                {
-                    hazardManager->SpawnLinearHazard(
-                        HazardType::RollingLog,
-                        glm::vec3(x, y, startZ),
-                        glm::vec3(x, y, endZ),
-                        2.2f,
-                        false);
-                });
+            // Two rows before the section and two past it, so a log is
+            // already rolling when the player reaches the first cannonball
+            // row and is still going as they leave the last.
+            const float startZ = rows.back()->GetCenterZ() - 2.0f;
+            const float endZ = rows.front()->GetCenterZ() + 2.0f;
+
+            RegisterRollingLogLane(y, halfWidth * 0.44f, startZ, endZ, 3.4f, 0.0f);
+
+            // Left lane set just inside the Rook's fenced pocket rather than
+            // through it. Running it wider crashed the log into that pocket's
+            // own fence a third of the way down, and running it through would
+            // have put a second timed threat inside a stash that already has
+            // to be taken between cannonballs.
+            RegisterRollingLogLane(y, -0.55f, startZ, endZ, 4.1f, 1.7f);
         }
 
         // "Faster than arrows... range is shorter and reaches about 70% of
@@ -1196,23 +1202,31 @@ void Game::BuildLevelHazards()
     }
 
     // Rolling Rock gauntlet: three boulders roll back down the middle of the
-    // level, reading as the battlefield collapsing in behind the player
-    // rather than a short preview confined to one section.
+    // level, reading as the battlefield collapsing in behind the player.
     //
-    // Bounded to the stretch between the first checkpoint and the last
-    // woodland. It used to start at the King's Cage and roll the entire
-    // field, which sent boulders straight through the finale and across the
-    // final approach - both of which are meant to be free of them.
+    // Runs the open corridor between the two woodlands rather than starting
+    // on a woodland row. Boulders are now stopped by anything solid, and a
+    // gauntlet that began inside a barrier would have every rock die on the
+    // frame it spawned. Ending short of the checkpoint keeps them off its
+    // gate, which is solid too.
+    //
+    // The lanes are set clear of the walls flanking the Queen so a rock's run
+    // is decided by the level rather than by one prop, but nothing depends on
+    // that: a boulder that does meet something solid simply stops there.
     {
         const auto woodlandRuns = FindRunsOfType(*level, LaneType::FenceTree);
-        const int checkpointRow = level->FindRowOfType(LaneType::Checkpoint);
+        const auto spikeRuns = FindRunsOfType(*level, LaneType::SpikeMud);
 
+        // From the last spike field down to the row after the first woodland.
         const Lane* startLane =
-            (woodlandRuns.empty() || woodlandRuns.back().empty())
+            (spikeRuns.size() < 2 || spikeRuns.back().empty())
             ? nullptr
-            : woodlandRuns.back().back();
+            : spikeRuns.back().front();
 
-        const Lane* endLane = level->GetLane(checkpointRow);
+        const Lane* endLane =
+            (woodlandRuns.empty() || woodlandRuns.front().empty())
+            ? nullptr
+            : level->GetLane(woodlandRuns.front().back()->GetRow() + 1);
 
         if (startLane && endLane)
         {
@@ -1220,17 +1234,14 @@ void Game::BuildLevelHazards()
             const float startZ = startLane->GetCenterZ();
             const float endZ = endLane->GetCenterZ();
 
-            const float lanesX[3] =
-            {
-                -halfWidth * 0.5f,
-                0.0f,
-                halfWidth * 0.5f
-            };
+            const float lanesX[3] = { -1.40f, 0.60f, 2.60f };
+
+            float delay = 0.0f;
 
             for (float x : lanesX)
             {
                 hazardManager->RegisterRepeatingSpawn(
-                    6.0f,
+                    5.0f,
                     [this, y, x, startZ, endZ]()
                     {
                         hazardManager->SpawnLinearHazard(
@@ -1239,8 +1250,43 @@ void Game::BuildLevelHazards()
                             glm::vec3(x, y, endZ),
                             1.2f,
                             false);
-                    });
+                    },
+                    delay);
+
+                delay += 1.7f;
             }
+        }
+    }
+
+    // A second pair of logs, rolling the stretch the boulders share.
+    //
+    // Different axis of threat to everything else in that corridor: the
+    // arrows sweep it across, the spears drop into it, and these run down it,
+    // so the section cannot be read as one repeated pattern.
+    {
+        const auto spikeRuns = FindRunsOfType(*level, LaneType::SpikeMud);
+        const auto grassRuns = FindRunsOfType(*level, LaneType::SafeGrass);
+
+        const Lane* startLane =
+            (spikeRuns.size() < 2 || spikeRuns.back().empty())
+            ? nullptr
+            : spikeRuns.back().back();
+
+        const Lane* endLane =
+            (grassRuns.size() < 7 || grassRuns[6].empty())
+            ? nullptr
+            : grassRuns[6].front();
+
+        if (startLane && endLane)
+        {
+            const float y = startLane->GetSurfaceHeight();
+            const float startZ = startLane->GetCenterZ();
+            const float endZ = endLane->GetCenterZ();
+
+            // Lanes threaded between the boulder lanes and clear of the
+            // walls flanking the Queen.
+            RegisterRollingLogLane(y, -0.60f, startZ, endZ, 3.7f, 0.9f);
+            RegisterRollingLogLane(y, 1.60f, startZ, endZ, 4.3f, 2.6f);
         }
     }
 
@@ -1387,6 +1433,31 @@ void Game::RegisterCannonballLane(
         {
             hazardManager->SpawnLinearHazard(
                 HazardType::Cannonball, start, end, 5.5f, false);
+        },
+        initialDelay);
+}
+
+void Game::RegisterRollingLogLane(
+    float surfaceHeight,
+    float laneX,
+    float startZ,
+    float endZ,
+    float interval,
+    float initialDelay)
+{
+    if (!hazardManager)
+        return;
+
+    const glm::vec3 start(laneX, surfaceHeight, startZ);
+    const glm::vec3 end(laneX, surfaceHeight, endZ);
+
+    hazardManager->RegisterRepeatingSpawn(
+        interval,
+        [this, start, end]()
+        {
+            // Faster and with a smaller hit area than a boulder, per the GDD.
+            hazardManager->SpawnLinearHazard(
+                HazardType::RollingLog, start, end, 2.6f, false);
         },
         initialDelay);
 }
@@ -2959,6 +3030,7 @@ void Game::Update(float deltaTime)
 
     if (hazardManager && pawn)
         hazardManager->Update(deltaTime, pawn->GetTransform().GetPosition());
+
 
 
 
