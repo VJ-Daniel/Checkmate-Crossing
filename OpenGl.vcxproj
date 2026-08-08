@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Src\Audio\AudioManager.cpp" />
     <ClCompile Include="Src\Gameplay\CageMeshFactory.cpp" />
     <ClCompile Include="Src\Gameplay\Cheat.cpp" />
     <ClCompile Include="Src\Gameplay\CheckpointGate.cpp" />
@@ -61,6 +62,7 @@
     <ClCompile Include="Src\Core\Transform3D.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Src\Audio\AudioManager.h" />
     <ClInclude Include="Src\Gameplay\CageMeshFactory.h" />
     <ClInclude Include="Src\Gameplay\Cheat.h" />
     <ClInclude Include="Src\Gameplay\CheckpointGate.h" />
@@ -112,7 +114,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v145</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -160,15 +162,22 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions); GLEW_STATIC;</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)Src\Core;$(SolutionDir)Src\Audio;$(SolutionDir)Src\UI;$(SolutionDir)Src\Graphics;$(SolutionDir)Src\Animation;$(SolutionDir)Src\Input;$(SolutionDir)Src\Physics;$(SolutionDir)Src\Gameplay;$(SolutionDir)Src\Resources;$(SolutionDir)Src\Dependencies\GLFW\Include;$(SolutionDir)Src\Dependencies\GLEW\Include;$(SolutionDir)Src\Dependencies\glm;$(SolutionDir)Src\Dependencies\STB</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)Src\Core;$(SolutionDir)Src\Audio;$(SolutionDir)Src\UI;$(SolutionDir)Src\Graphics;$(SolutionDir)Src\Animation;$(SolutionDir)Src\Input;$(SolutionDir)Src\Physics;$(SolutionDir)Src\Gameplay;$(SolutionDir)Src\Resources;$(SolutionDir)Src\Dependencies\GLFW\Include;$(SolutionDir)Src\Dependencies\GLEW\Include;$(SolutionDir)Src\Dependencies\glm;$(SolutionDir)Src\Dependencies\STB;$(SolutionDir)Src\Dependencies\SDL2\include;$(SolutionDir)Src\Dependencies\SDL2_mixer\include</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)Src\Dependencies\GLFW\Lib;$(SolutionDir)Src\Dependencies\GLEW\Lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;opengl32.lib;User32.lib;Gdi32.lib;Shell32.lib;Winmm.lib;glew32s.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)Src\Dependencies\GLFW\Lib;$(SolutionDir)Src\Dependencies\GLEW\Lib;$(SolutionDir)Src\Dependencies\SDL2_mixer\lib\x86;$(SolutionDir)Src\Dependencies\SDL2\lib\x86</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glfw3.lib;opengl32.lib;User32.lib;Gdi32.lib;Shell32.lib;Winmm.lib;glew32s.lib;SDL2_mixer.lib;SDL2.lib;SDL2main.lib</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>
+		  xcopy /Y /D "$(SolutionDir)Src\Dependencies\SDL2\lib\x86\*.dll" "$(OutDir)"
+		  xcopy /Y /D "$(SolutionDir)Src\Dependencies\SDL2_mixer\lib\x86\*.dll" "$(OutDir)"
+		  xcopy /Y /D "$(SolutionDir)Src\Dependencies\SDL2_mixer\lib\x86\optional\*.dll" "$(OutDir)"
+	  </Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>

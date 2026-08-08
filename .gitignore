@@ -17,8 +17,8 @@ ipch/
 # Build output directories
 Debug/
 Release/
-x64/
-x86/
+/x64/
+/x86/
 /OpenGl/
 build/
 bin/

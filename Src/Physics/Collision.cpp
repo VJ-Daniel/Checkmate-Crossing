@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 
+
 // ---- CollisionBox ----
 
 bool CollisionBox::Overlaps(const CollisionBox& a, const CollisionBox& b)

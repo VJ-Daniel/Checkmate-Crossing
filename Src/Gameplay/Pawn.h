@@ -423,4 +423,6 @@ private:
     float health = GameConfig::MaxPawnHealth;
 
     glm::vec3 pawnBaseScale;
+
+    float footstepTimer = 0.0f;
 };

@@ -20,6 +20,7 @@
 #include "ResourceManager.h"
 #include "SceneNode.h"
 #include "Shader.h"
+#include "AudioManager.h"
 #include <iostream>  // For debug output
 
 namespace
@@ -196,6 +197,11 @@ bool Game::Initialize(
         screenHeight);
 
     ConfigureCamera();
+
+    AudioManager::Initialize();
+    AudioManager::PlayMusic("Src/Resources/Sounds/bg_music.mp3");
+
+
 
     auto shader = std::make_shared<Shader>();
 
@@ -2879,13 +2885,16 @@ void Game::UpdateDoors(float deltaTime)
 
         const float newAngle = std::min(
             checkpointGates[i]->GetDoorAngle() +
-                GameConfig::DoorOpenSpeed * deltaTime,
+            GameConfig::DoorOpenSpeed * deltaTime,
             CheckpointGate::GetMaxDoorAngle());
 
         checkpointGates[i]->SetDoorAngle(newAngle);
 
-        if (newAngle >= CheckpointGate::GetMaxDoorAngle())
+        if (newAngle >= CheckpointGate::GetMaxDoorAngle()) {
             checkpointGateOpening[i] = false;
+
+            AudioManager::PlaySound("Src/Resources/Sounds/door-open.wav");
+        }
     }
 
     if (kingsCageDoorOpening && kingsCage)
@@ -2899,10 +2908,6 @@ void Game::UpdateDoors(float deltaTime)
                 kingsCageDoorAngle + GameConfig::DoorOpenSpeed * deltaTime,
                 GameConfig::KingsCageMaxDoorAngle);
 
-            // The entrance faces +Z. The left leaf extends +X from its outer
-            // hinge, so negative Y sends its free edge toward +Z; the right
-            // leaf extends -X and needs the opposite sign. Both therefore
-            // swing outward, away from the cage interior at -Z.
             leftDoor->GetTransform().SetRotation(
                 0.0f, -kingsCageDoorAngle, 0.0f);
 
@@ -2910,7 +2915,12 @@ void Game::UpdateDoors(float deltaTime)
                 0.0f, kingsCageDoorAngle, 0.0f);
 
             if (kingsCageDoorAngle >= GameConfig::KingsCageMaxDoorAngle)
+            {
                 kingsCageDoorOpening = false;
+
+                // Play sound when the King's Cage door finishes opening
+                AudioManager::PlaySound("Src/Resources/Sounds/door-open.wav");
+            }
         }
     }
 }
@@ -3417,6 +3427,8 @@ void Game::Shutdown()
     camera.reset();
     cameraFollowInitialized = false;
 
+    AudioManager::StopMusic();
+    AudioManager::Shutdown();
     ResourceManager::Shutdown();
 }
 
