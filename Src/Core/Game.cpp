@@ -2938,6 +2938,8 @@ void Game::UpdateGameOver(float deltaTime)
     if (deathCount < GameConfig::MaxDeathsBeforeGameOver)
         return;
 
+    AudioManager::PlaySound("Src/Resources/Sounds/defeat.wav");
+
     // Game Over: harsher than a normal death. Clear checkpoint progress and
     // send the pawn all the way back to the level's initial spawn point,
     // not whichever checkpoint it had most recently banked -- otherwise the
@@ -3014,6 +3016,7 @@ void Game::UpdateVictory(float deltaTime)
 
     hasWon = true;
     victoryBannerTimer = GameConfig::VictoryBannerDuration;
+    AudioManager::PlaySound("Src/Resources/Sounds/victory.wav");
 }
 
 void Game::Update(float deltaTime)
